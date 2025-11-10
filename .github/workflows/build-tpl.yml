@@ -15,7 +15,7 @@ on:
       runs_on:
         required: false
         type: string
-        default: Default
+        default: self-hosted
     secrets:
       DOCKERHUB_USERNAME:
         required: true
