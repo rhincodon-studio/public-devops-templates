@@ -40,19 +40,20 @@ jobs:
       - name: Download Kaniko Executor
         run: |
           mkdir -p /tmp/kaniko
-          curl -sSL -o /tmp/kaniko/executor \
-            https://github.com/GoogleContainerTools/kaniko/releases/download/v1.24.0/executor-linux-amd64
+          curl -fsSL -o /tmp/kaniko/executor \
+            https://github.com/GoogleContainerTools/kaniko/releases/download/v1.24.0/executor
           chmod +x /tmp/kaniko/executor
           echo "✅ Kaniko binary downloaded."
+          /tmp/kaniko/executor version || echo "(version check skipped)"
 
-      # --- 3️⃣ 設定 Docker Hub 登入資訊 ---
+      # --- 3️⃣ 設定 Docker 登入 ---
       - name: Configure Docker Auth
         run: |
           mkdir -p /tmp/.docker
           echo '{"auths":{"https://index.docker.io/v1/":{"auth":"'"$(echo -n ${{ secrets.DOCKERHUB_USERNAME }}:${{ secrets.DOCKERHUB_TOKEN }} | base64)"'"}}}' > /tmp/.docker/config.json
           echo "✅ Docker credentials configured."
 
-      # --- 4️⃣ 生成版本號 (日期 + commit) ---
+      # --- 4️⃣ 建立版本號 ---
       - name: Generate Version Tag
         id: version
         run: |
@@ -76,7 +77,7 @@ jobs:
             --docker-config=/tmp/.docker \
             --image-fs-extract-retry 5
 
-      # --- 6️⃣ 輸出版本號檔案 (模擬 GitLab dotenv) ---
+      # --- 6️⃣ 輸出版本號檔案 ---
       - name: Export version
         run: |
           echo "VERSION=${VERSION}" >> "${{ inputs.repository }}.env"
