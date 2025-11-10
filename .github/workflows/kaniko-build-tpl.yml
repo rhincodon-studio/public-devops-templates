@@ -1,0 +1,39 @@
+name: 🔧 Kaniko Build Template
+
+on:
+  workflow_call:
+    inputs:
+      context:
+        required: true
+        type: string
+      dockerfile:
+        required: true
+        type: string
+      image_name:
+        required: true
+        type: string
+      tag:
+        required: false
+        type: string
+        default: latest
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+
+jobs:
+  kaniko-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & Push Image using Kaniko
+        uses: aevea/action-kaniko@v1
+        with:
+          context: ${{ inputs.context }}
+          dockerfile: ${{ inputs.dockerfile }}
+          image: ${{ inputs.image_name }}
+          tag: ${{ inputs.tag }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
