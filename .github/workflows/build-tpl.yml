@@ -1,0 +1,44 @@
+name: 🧱 Docker Build Template
+
+on:
+  workflow_call:
+    inputs:
+      module:
+        required: true
+        type: string
+      workdir:
+        required: true
+        type: string
+      image_name:
+        required: true
+        type: string
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+
+jobs:
+  build:
+    runs-on: Default
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Build & Push Image
+        working-directory: ${{ inputs.workdir }}
+        run: |
+          DATE=$(date +%Y%m%d)
+          COMMIT=$(git rev-parse --short HEAD)
+          TAG="${DATE}-${COMMIT}"
+          IMAGE="${{ inputs.image_name }}"
+
+          echo "🚀 Building ${IMAGE}:${TAG}"
+          docker build . -t ${IMAGE}:${TAG} -t ${IMAGE}:latest
+          docker push ${IMAGE}:${TAG}
+          docker push ${IMAGE}:latest
+
+      - name: ✅ Done
+        run: echo "✅ Built and pushed ${{ inputs.module }} successfully."
