@@ -1,4 +1,4 @@
-name: 🔧 Kaniko Build Template
+name: 🔧 Kaniko Build Template (Daemonless)
 
 on:
   workflow_call:
@@ -32,23 +32,27 @@ on:
 jobs:
   kaniko-build:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
-    container:
-      image: gcr.io/kaniko-project/executor:v1.24.0
-      options: --entrypoint ""
-      volumes:
-        - /kaniko/.docker:/kaniko/.docker
     steps:
       # --- 1️⃣ 檢出程式碼 ---
       - uses: actions/checkout@v4
 
-      # --- 2️⃣ 設定 docker auth config ---
-#      - name: Configure Docker Auth
-#        run: |
-#          mkdir -p /kaniko/.docker
-#          echo '{"auths":{"https://index.docker.io/v1/":{"auth":"'"$(echo -n ${{ secrets.DOCKERHUB_USERNAME }}:${{ secrets.DOCKERHUB_TOKEN }} | base64)"'"}}}' > /kaniko/.docker/config.json
-#          cat /kaniko/.docker/config.json
+      # --- 2️⃣ 下載 Kaniko Binary ---
+      - name: Download Kaniko Executor
+        run: |
+          mkdir -p /tmp/kaniko
+          curl -sSL -o /tmp/kaniko/executor \
+            https://github.com/GoogleContainerTools/kaniko/releases/download/v1.24.0/executor-linux-amd64
+          chmod +x /tmp/kaniko/executor
+          echo "✅ Kaniko binary downloaded."
 
-      # --- 3️⃣ 計算版本號 (日期+commit) ---
+      # --- 3️⃣ 設定 Docker Hub 登入資訊 ---
+      - name: Configure Docker Auth
+        run: |
+          mkdir -p /tmp/.docker
+          echo '{"auths":{"https://index.docker.io/v1/":{"auth":"'"$(echo -n ${{ secrets.DOCKERHUB_USERNAME }}:${{ secrets.DOCKERHUB_TOKEN }} | base64)"'"}}}' > /tmp/.docker/config.json
+          echo "✅ Docker credentials configured."
+
+      # --- 4️⃣ 生成版本號 (日期 + commit) ---
       - name: Generate Version Tag
         id: version
         run: |
@@ -57,18 +61,22 @@ jobs:
           echo "$VERSION" > version.txt
           echo "Generated version: $VERSION"
 
-      # --- 4️⃣ 使用 Kaniko 建置與推送 ---
-      - name: Build and Push with Kaniko
+      # --- 5️⃣ 使用 Kaniko Binary 建置與推送 ---
+      - name: Build and Push with Kaniko (Daemonless)
         run: |
-          echo "Building ${{ inputs.container_repository }}:${VERSION}"
-          /kaniko/executor \
+          echo "🚀 Building ${{ inputs.container_repository }}:${VERSION}"
+          /tmp/kaniko/executor \
             --context "${{ inputs.working_directory }}" \
             --dockerfile "${{ inputs.dockerfile_path }}" \
             --destination "docker.io/${{ inputs.container_repository }}:${VERSION}" \
             --cache=${{ inputs.cache }} \
+            --verbosity info \
+            --snapshotMode redo \
+            --use-new-run \
+            --docker-config=/tmp/.docker \
             --image-fs-extract-retry 5
 
-      # --- 5️⃣ 輸出版本號 (模擬 GitLab dotenv artifact) ---
+      # --- 6️⃣ 輸出版本號檔案 (模擬 GitLab dotenv) ---
       - name: Export version
         run: |
           echo "VERSION=${VERSION}" >> "${{ inputs.repository }}.env"
