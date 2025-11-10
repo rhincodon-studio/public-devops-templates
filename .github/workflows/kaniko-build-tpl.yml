@@ -42,11 +42,11 @@ jobs:
       - uses: actions/checkout@v4
 
       # --- 2️⃣ 設定 docker auth config ---
-      - name: Configure Docker Auth
-        run: |
-          mkdir -p /kaniko/.docker
-          echo '{"auths":{"https://index.docker.io/v1/":{"auth":"'"$(echo -n ${{ secrets.DOCKERHUB_USERNAME }}:${{ secrets.DOCKERHUB_TOKEN }} | base64)"'"}}}' > /kaniko/.docker/config.json
-          cat /kaniko/.docker/config.json
+#      - name: Configure Docker Auth
+#        run: |
+#          mkdir -p /kaniko/.docker
+#          echo '{"auths":{"https://index.docker.io/v1/":{"auth":"'"$(echo -n ${{ secrets.DOCKERHUB_USERNAME }}:${{ secrets.DOCKERHUB_TOKEN }} | base64)"'"}}}' > /kaniko/.docker/config.json
+#          cat /kaniko/.docker/config.json
 
       # --- 3️⃣ 計算版本號 (日期+commit) ---
       - name: Generate Version Tag
