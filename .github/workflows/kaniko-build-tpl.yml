@@ -24,7 +24,7 @@ on:
 
 jobs:
   kaniko-build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
     steps:
       - uses: actions/checkout@v4
 
