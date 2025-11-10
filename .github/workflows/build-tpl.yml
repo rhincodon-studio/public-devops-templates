@@ -12,6 +12,10 @@ on:
       image_name:
         required: true
         type: string
+      runs_on:
+        required: false
+        type: string
+        default: Default
     secrets:
       DOCKERHUB_USERNAME:
         required: true
