@@ -20,8 +20,9 @@ on:
         type: boolean
         default: true
       runs_on:
+        required: false
         type: string
-        default: self-hosted
+        default: '["self-hosted", "linux"]'
     secrets:
       DOCKERHUB_USERNAME:
         required: true
