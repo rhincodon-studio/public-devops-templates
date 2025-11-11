@@ -33,7 +33,7 @@ jobs:
   kaniko-build:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
     container:
-      image: gcr.io/kaniko-project/executor:v1.24.0
+      image: gcr.io/kaniko-project/executor:v1.23.0-debug
       options: --entrypoint ""
       volumes:
         - /kaniko/.docker:/kaniko/.docker
