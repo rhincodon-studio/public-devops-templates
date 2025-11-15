@@ -24,9 +24,15 @@ on:
         required: false
 
       runs_on:
-        required: false
         type: string
+        required: false
         default: '"ubuntu-latest"'
+
+    secrets:
+      SONAR_TOKEN:
+        required: true
+      SONAR_HOST_URL:
+        required: false
 
 jobs:
   sonar-scan:
