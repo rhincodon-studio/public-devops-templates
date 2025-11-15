@@ -43,11 +43,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Debug secret
         run: |
           echo "SONAR_TOKEN length: ${#SONAR_TOKEN}"
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
       # ===============================================================
       #  Cloud 模式（SonarCloud）
       # ===============================================================
@@ -63,6 +65,7 @@ jobs:
             -Dsonar.projectKey=${{ inputs.project-key }}
             -Dsonar.projectName=${{ inputs.project-name }}
             -Dsonar.organization=${{ inputs.organization }}
+            -Dsonar.sarif.filePath=sonar-report.sarif
 
       # ===============================================================
       #  Self-hosted 模式（自架 SonarQube）
@@ -74,7 +77,18 @@ jobs:
           projectBaseDir: .
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}  # 你的 K8s / VM URL
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           SONAR_SCANNER_OPTS: >
             -Dsonar.projectKey=${{ inputs.project-key }}
             -Dsonar.projectName=${{ inputs.project-name }}
+            -Dsonar.sarif.filePath=sonar-report.sarif
+
+      # ===============================================================
+      #  上傳報告 artifact（Cloud 與 Selfhosted 皆適用）
+      # ===============================================================
+      - name: Upload Sonar SARIF Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-report
+          path: sonar-report.sarif
+          if-no-files-found: warn
