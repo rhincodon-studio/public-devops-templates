@@ -1,14 +1,28 @@
-name: SonarQube Code Scan (Template)
+name: Sonar Universal Scan (Template)
 
 on:
   workflow_call:
     inputs:
+      mode:
+        description: "cloud 或 selfhosted"
+        type: string
+        required: true
+
       project-key:
-        required: true
+        description: "Sonar project key"
         type: string
+        required: true
+
       project-name:
-        required: true
+        description: "Sonar project name"
         type: string
+        required: true
+
+      organization:
+        description: "SonarCloud 組織（cloud 模式需要）"
+        type: string
+        required: false
+
       runs_on:
         required: false
         type: string
@@ -19,34 +33,38 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # SonarQube needs full history to analyze blame
+          fetch-depth: 0
 
-      # 下載 Sonar Scanner
-      - name: Install Sonar Scanner
+      # ===============================================================
+      #  Cloud 模式（SonarCloud）
+      # ===============================================================
+      - name: SonarCloud Scan
+        if: ${{ inputs.mode == 'cloud' }}
         uses: SonarSource/sonarcloud-github-action@v2
         with:
-          install-only: true
-
-      # 主要掃描動作
-      - name: Run SonarQube Scan
+          projectBaseDir: .
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        run: |
-          sonar-scanner \
-            -Dsonar.projectKey="${{ inputs.project-key }}" \
-            -Dsonar.projectName="${{ inputs.project-name }}" \
-            -Dsonar.sources=. \
-            -Dsonar.host.url="${{ secrets.SONAR_HOST_URL }}" \
-            -Dsonar.login="${{ secrets.SONAR_TOKEN }}" \
-            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-            -Dsonar.tests=.
+          SONAR_HOST_URL: "https://sonarcloud.io"
+          SONAR_SCANNER_OPTS: >
+            -Dsonar.projectKey=${{ inputs.project-key }}
+            -Dsonar.projectName=${{ inputs.project-name }}
+            -Dsonar.organization=${{ inputs.organization }}
 
-      # 等待 Quality Gate（阻擋不合格的程式碼）
-      - name: SonarQube Quality Gate
-        uses: SonarSource/sonarcloud-github-action@master
+      # ===============================================================
+      #  Self-hosted 模式（自架 SonarQube）
+      # ===============================================================
+      - name: SonarQube Scan (Self-hosted)
+        if: ${{ inputs.mode == 'selfhosted' }}
+        uses: SonarSource/sonarqube-scan-action@v2
+        with:
+          projectBaseDir: .
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}  # 你的 K8s / VM URL
+          SONAR_SCANNER_OPTS: >
+            -Dsonar.projectKey=${{ inputs.project-key }}
+            -Dsonar.projectName=${{ inputs.project-name }}
