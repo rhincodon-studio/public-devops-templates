@@ -1,0 +1,52 @@
+name: SonarQube Code Scan (Template)
+
+on:
+  workflow_call:
+    inputs:
+      project-key:
+        required: true
+        type: string
+      project-name:
+        required: true
+        type: string
+      runs_on:
+        required: false
+        type: string
+        default: '"ubuntu-latest"'
+
+jobs:
+  sonar-scan:
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # SonarQube needs full history to analyze blame
+
+      # 下載 Sonar Scanner
+      - name: Install Sonar Scanner
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          install-only: true
+
+      # 主要掃描動作
+      - name: Run SonarQube Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey="${{ inputs.project-key }}" \
+            -Dsonar.projectName="${{ inputs.project-name }}" \
+            -Dsonar.sources=. \
+            -Dsonar.host.url="${{ secrets.SONAR_HOST_URL }}" \
+            -Dsonar.login="${{ secrets.SONAR_TOKEN }}" \
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+            -Dsonar.tests=.
+
+      # 等待 Quality Gate（阻擋不合格的程式碼）
+      - name: SonarQube Quality Gate
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
