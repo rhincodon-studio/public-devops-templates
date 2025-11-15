@@ -1,0 +1,52 @@
+name: Checkmarx AST SAST Scan (Template)
+
+on:
+  workflow_call:
+    inputs:
+      project-name:
+        required: true
+        type: string
+      fail-policy:
+        required: false
+        type: string
+        default: "high=0;medium=5"
+      branch:
+        required: false
+        type: string
+        default: "${{ github.ref_name }}"
+
+jobs:
+  sast-scan:
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+
+    steps:
+      # 1. 取出程式碼
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # 2. 執行 Checkmarx AST CLI（使用你的 Docker image）
+      - name: Run Checkmarx AST Scan
+        shell: bash
+        run: |
+          echo "🚀 Running Checkmarx AST Scan..."
+          
+          docker run --rm \
+            -e CX_APIKEY="${{ secrets.CX_APIKEY }}" \
+            -e CX_BASE_URI="https://ast.checkmarx.net" \
+            -e CX_TENANT="${{ secrets.CX_TENANT }}" \
+            -v "${GITHUB_WORKSPACE}:/app" \
+            rhincodonstudio/checkmarx-ast-cli:latest \
+              cx scan create \
+                --project-name "${{ inputs['project-name'] }}" \
+                --branch "${{ inputs.branch }}" \
+                --sast-containerized true \
+                --async false \
+                --threshold "${{ inputs.fail-policy }}" \
+                --report --output "/app/cx-results.json"
+
+      # 3. 上傳掃描結果（可選）
+      - name: Upload scan result
+        uses: actions/upload-artifact@v4
+        with:
+          name: cx-results
+          path: cx-results.json
