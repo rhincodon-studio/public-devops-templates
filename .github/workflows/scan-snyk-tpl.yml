@@ -1,0 +1,63 @@
+name: Snyk Scan (Template)
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: "Container image name for Snyk container scan"
+        required: false
+        type: string
+        default: ""
+
+      org:
+        description: "Snyk organization ID"
+        required: false
+        type: string
+        default: ""
+
+      runs_on:
+        description: "Runner OS"
+        type: string
+        required: false
+        default: '"ubuntu-latest"'
+
+    secrets:
+      SNYK_TOKEN:
+        required: true
+
+jobs:
+  deps-scan:
+    name: Snyk Dependency Scan
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Snyk CLI
+        uses: snyk/actions/setup@v4
+
+      - name: Snyk Test (Dependencies)
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          snyk test \
+            --all-projects \
+            ${{ inputs.org && format('--org={0}', inputs.org) || '' }}
+
+  image-scan:
+    name: Snyk Container Scan
+    if: inputs.image-name != ''
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+
+    steps:
+      - name: Install Snyk CLI
+        uses: snyk/actions/setup@v4
+
+      - name: Snyk Container Test
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          snyk container test \
+            ${{ inputs.image-name }} \
+            ${{ inputs.org && format('--org={0}', inputs.org) || '' }}

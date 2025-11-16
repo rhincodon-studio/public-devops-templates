@@ -1,0 +1,34 @@
+name: Trivy Dependency Scan (Template)
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        required: false
+        type: string
+        default: ''
+
+      runs_on:
+        type: string
+        required: false
+        default: '"ubuntu-latest"'
+jobs:
+  deps-scan:
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan dependencies
+        uses: aquasecurity/trivy-action@v0
+        with:
+          scan-type: fs
+          severity: CRITICAL,HIGH
+
+  image-scan:
+    if: inputs.image-name != ''
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    steps:
+      - name: Scan image
+        uses: aquasecurity/trivy-action@v0
+        with:
+          scan-type: image
+          image-ref: ${{ inputs.image-name }}
