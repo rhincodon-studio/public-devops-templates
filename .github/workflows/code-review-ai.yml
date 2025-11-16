@@ -1,0 +1,118 @@
+name: AI Code Review (Hybrid)
+
+on:
+  workflow_call:
+    inputs:
+      base_ref:
+        description: "Base branch name (e.g., main)"
+        required: true
+        type: string
+
+      mode:
+        description: "choose openai or amazonq"
+        required: true
+        type: string
+        default: "openai"
+
+    secrets:
+      OPENAI_API_KEY:
+        required: false
+      AMAZON_Q_API_KEY:
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "Base branch name"
+        required: true
+        type: string
+
+      mode:
+        description: "choose openai or amazonq"
+        required: true
+        type: choice
+        options:
+          - openai
+          - amazonq
+        default: openai
+
+jobs:
+  hybrid-review:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -------------------------
+      # 1. Checkout
+      # -------------------------
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # -------------------------
+      # 2. Extract diff
+      # -------------------------
+      - name: Extract diff
+        id: diff
+        run: |
+          git fetch origin ${{ inputs.base_ref }}
+          DIFF=$(git diff origin/${{ inputs.base_ref }} --unified=5)
+          echo "diff<<EOF" >> $GITHUB_OUTPUT
+          echo "$DIFF" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # -------------------------
+      # 3. Run AI depending on mode
+      # -------------------------
+      - name: Process AI Review
+        id: review
+        run: |
+          MODE="${{ inputs.mode }}"
+          DIFF="${{ steps.diff.outputs.diff }}"
+
+          echo "Selected AI Mode: $MODE"
+
+          if [ "$MODE" = "openai" ]; then
+            echo "Running OpenAI model..."
+            PAYLOAD=$(jq -n --arg diff "$DIFF" '
+            {
+              "model": "gpt-5.1",
+              "messages": [
+                {"role": "system", "content": "Senior code reviewer. Return concise markdown comments."},
+                {"role": "user", "content": ("Review this diff:\n\n" + $diff)}
+              ]
+            }')
+
+            RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+              -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" | jq -r '.choices[0].message.content')
+
+          elif [ "$MODE" = "amazonq" ]; then
+            echo "Running Amazon Q Developer Agent..."
+            PAYLOAD=$(jq -n --arg diff "$DIFF" '
+            {
+              "model": "q-dev",
+              "input": ("Review this pull request diff:\n\n" + $diff)
+            }')
+
+            RESPONSE=$(curl -s https://q.dev/api/v1/generate \
+              -H "Authorization: Bearer ${{ secrets.AMAZON_Q_API_KEY }}" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" | jq -r '.output')
+
+          else
+            echo "Unknown mode: $MODE"
+            exit 1
+          fi
+
+          echo "response<<EOF" >> $GITHUB_OUTPUT
+          echo "$RESPONSE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # -------------------------
+      # 4. Output to caller
+      # -------------------------
+      - name: Print review
+        run: |
+          echo "::notice::AI Review Result:"
+          echo "${{ steps.review.outputs.response }}"
