@@ -115,4 +115,13 @@ jobs:
       - name: Print review
         run: |
           echo "::notice::AI Review Result:"
-          echo "${{ steps.review.outputs.response }}"
+          echo "${{ steps.review.outputs.response }}"    
+
+      - name: Comment on PR
+        uses: peter-evans/create-or-update-comment@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            🤖 **AI 程式碼審查意見**
+            ${{ steps.review.outputs.response }}
