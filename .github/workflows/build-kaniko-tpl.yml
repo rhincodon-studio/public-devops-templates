@@ -1,25 +1,68 @@
+# ============================================================================
+# Kaniko Build Template
+# ============================================================================
+# 
+# 📋 功能說明：
+#   - 使用 Kaniko 在容器內建置 Docker 映像（無需 Docker daemon）
+#   - 自動產生版本標籤（日期.commit）
+#   - 支援 layer caching 加速建置
+#   - 輸出版本號到環境檔案
+#
+# 🔧 使用方式：
+#   jobs:
+#     build:
+#       uses: ./.github/workflows/build-kaniko-tpl.yml
+#       with:
+#         repository: "my-repo"
+#         container_repository: "myorg/my-service"
+#         working_directory: "services/my-service"
+#         dockerfile_path: "Dockerfile"
+#       secrets:
+#         DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+#         DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+#
+# 📦 輸入參數：
+#   - repository: 儲存庫名稱（必填）
+#   - container_repository: 容器映像儲存庫路徑（必填）
+#   - working_directory: 工作目錄路徑（必填）
+#   - dockerfile_path: Dockerfile 相對路徑（必填）
+#   - cache: 是否啟用 layer cache（選填，預設：true）
+#   - runs_on: Runner 類型（選填，預設：["self-hosted", "linux"]）
+#
+# 🔐 必要 Secrets：
+#   - DOCKERHUB_USERNAME: Docker Hub 使用者名稱
+#   - DOCKERHUB_TOKEN: Docker Hub 存取權杖
+#
+# ============================================================================
+
 name: 🔧 Kaniko Build Template
 
 on:
   workflow_call:
     inputs:
       repository:
+        description: 'Repository name'
         required: true
         type: string
       container_repository:
+        description: 'Container repository path (e.g. myorg/myimage)'
         required: true
         type: string
       working_directory:
+        description: 'Working directory path'
         required: true
         type: string
       dockerfile_path:
+        description: 'Dockerfile relative path'
         required: true
         type: string
       cache:
+        description: 'Enable layer caching'
         required: false
         type: boolean
         default: true
       runs_on:
+        description: 'Runner type'
         required: false
         type: string
         default: '["self-hosted", "linux"]'

@@ -1,18 +1,55 @@
+# ============================================================================
+# Docker Build Template
+# ============================================================================
+# 
+# 📋 功能說明：
+#   - 使用 Docker 建置並推送容器映像到 Docker Hub
+#   - 自動產生版本標籤（日期-commit）
+#   - 同時推送 latest 標籤
+#
+# 🔧 使用方式：
+#   jobs:
+#     build:
+#       uses: ./.github/workflows/build-docker-tpl.yml
+#       with:
+#         module: "my-service"
+#         workdir: "./services/my-service"
+#         image_name: "myorg/my-service"
+#       secrets:
+#         DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+#         DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+#
+# 📦 輸入參數：
+#   - module: 模組名稱（必填）
+#   - workdir: 工作目錄路徑（必填）
+#   - image_name: Docker 映像名稱（必填）
+#   - runs_on: Runner 類型（選填，預設：self-hosted）
+#
+# 🔐 必要 Secrets：
+#   - DOCKERHUB_USERNAME: Docker Hub 使用者名稱
+#   - DOCKERHUB_TOKEN: Docker Hub 存取權杖
+#
+# ============================================================================
+
 name: 🧱 Docker Build Template
 
 on:
   workflow_call:
     inputs:
       module:
+        description: 'Module name'
         required: true
         type: string
       workdir:
+        description: 'Working directory path'
         required: true
         type: string
       image_name:
+        description: 'Docker image name (e.g. myorg/myimage)'
         required: true
         type: string
       runs_on:
+        description: 'Runner type'
         required: false
         type: string
         default: self-hosted

@@ -1,26 +1,62 @@
+# ============================================================================
+# Checkmarx AST SAST Scan Template
+# ============================================================================
+# 
+# 📋 功能說明：
+#   - 使用 Checkmarx AST 進行靜態應用程式安全測試（SAST）
+#   - 支援自訂失敗策略（依嚴重性等級設定閾值）
+#   - 產生掃描報告並上傳為 artifact
+#
+# 🔧 使用方式：
+#   jobs:
+#     security-scan:
+#       uses: ./.github/workflows/scan-checkmarx-tpl.yml
+#       with:
+#         project-name: "my-project"
+#         fail-policy: "high=0;medium=5"
+#       secrets:
+#         CX_APIKEY: ${{ secrets.CX_APIKEY }}
+#         CX_TENANT: ${{ secrets.CX_TENANT }}
+#
+# 📦 輸入參數：
+#   - project-name: Checkmarx 專案名稱（必填）
+#   - fail-policy: 失敗策略，格式：severity=count（選填，預設：high=0;medium=5）
+#   - branch: 分支名稱（選填，預設：當前分支）
+#   - runs_on: Runner 類型（選填，預設：ubuntu-latest）
+#
+# 🔐 必要 Secrets：
+#   - CX_APIKEY: Checkmarx API 金鑰
+#   - CX_TENANT: Checkmarx 租戶名稱
+#
+# ============================================================================
+
 name: Checkmarx AST SAST Scan (Template)
 
 on:
   workflow_call:
     inputs:
       project-name:
+        description: 'Checkmarx project name'
         required: true
         type: string
 
       fail-policy:
+        description: 'Failure policy (e.g. high=0;medium=5)'
         required: false
         type: string
         default: "high=0;medium=5"
 
       branch:
+        description: 'Branch name (defaults to current branch)'
         required: false
         type: string
         default: ""
 
       runs_on:
+        description: 'Runner type'
         required: false
         type: string
-        default: '"ubuntu-latest"'   # 必須是 JSON 格式字串（含引號）
+        default: '"ubuntu-latest"'
 
 jobs:
   sast-scan:

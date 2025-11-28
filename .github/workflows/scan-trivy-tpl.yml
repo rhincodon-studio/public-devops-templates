@@ -1,14 +1,38 @@
+# ============================================================================
+# Trivy Security Scan Template
+# ============================================================================
+# 
+# 📋 功能說明：
+#   - 使用 Trivy 掃描依賴套件漏洞
+#   - 支援容器映像掃描（選填）
+#   - 檢測 CRITICAL 和 HIGH 等級的安全問題
+#
+# 🔧 使用方式：
+#   jobs:
+#     security-scan:
+#       uses: ./.github/workflows/scan-trivy-tpl.yml
+#       with:
+#         image-name: "myorg/myimage:latest"  # 選填
+#
+# 📦 輸入參數：
+#   - image-name: 容器映像名稱（選填，若提供則執行容器掃描）
+#   - runs_on: Runner 類型（選填，預設：ubuntu-latest）
+#
+# ============================================================================
+
 name: Trivy Dependency Scan (Template)
 
 on:
   workflow_call:
     inputs:
       image-name:
+        description: 'Container image name for image scan (optional)'
         required: false
         type: string
         default: ''
 
       runs_on:
+        description: 'Runner type'
         type: string
         required: false
         default: '"ubuntu-latest"'

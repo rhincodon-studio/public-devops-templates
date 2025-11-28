@@ -1,3 +1,32 @@
+# ============================================================================
+# Snyk Security Scan Template
+# ============================================================================
+# 
+# 📋 功能說明：
+#   - 使用 Snyk 進行依賴套件安全掃描
+#   - 支援容器映像掃描（選填）
+#   - 檢測已知漏洞並提供修復建議
+#
+# 🔧 使用方式：
+#   jobs:
+#     security-scan:
+#       uses: ./.github/workflows/scan-snyk-tpl.yml
+#       with:
+#         image-name: "myorg/myimage:latest"  # 選填
+#         org: "my-snyk-org"                  # 選填
+#       secrets:
+#         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+#
+# 📦 輸入參數：
+#   - image-name: 容器映像名稱（選填，若提供則執行容器掃描）
+#   - org: Snyk 組織 ID（選填）
+#   - runs_on: Runner 類型（選填，預設：ubuntu-latest）
+#
+# 🔐 必要 Secrets：
+#   - SNYK_TOKEN: Snyk API 權杖
+#
+# ============================================================================
+
 name: Snyk Scan (Template)
 
 on:
@@ -16,7 +45,7 @@ on:
         default: ""
 
       runs_on:
-        description: "Runner OS"
+        description: "Runner type"
         type: string
         required: false
         default: '"ubuntu-latest"'

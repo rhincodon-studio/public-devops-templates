@@ -1,10 +1,56 @@
+# ============================================================================
+# Sonar Universal Scan Template
+# ============================================================================
+# 
+# 📋 功能說明：
+#   - 支援 SonarCloud 和自架 SonarQube 兩種模式
+#   - 進行程式碼品質與安全性分析
+#   - 產生 SARIF 格式報告並上傳為 artifact
+#
+# 🔧 使用方式（SonarCloud）：
+#   jobs:
+#     code-quality:
+#       uses: ./.github/workflows/scan-sonar-tpl.yml
+#       with:
+#         mode: "cloud"
+#         project-key: "my-project-key"
+#         project-name: "My Project"
+#         organization: "my-org"
+#       secrets:
+#         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+#
+# 🔧 使用方式（Self-hosted SonarQube）：
+#   jobs:
+#     code-quality:
+#       uses: ./.github/workflows/scan-sonar-tpl.yml
+#       with:
+#         mode: "selfhosted"
+#         project-key: "my-project-key"
+#         project-name: "My Project"
+#       secrets:
+#         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+#         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+#
+# 📦 輸入參數：
+#   - mode: 掃描模式，cloud 或 selfhosted（必填）
+#   - project-key: Sonar 專案金鑰（必填）
+#   - project-name: Sonar 專案名稱（必填）
+#   - organization: SonarCloud 組織名稱（cloud 模式必填）
+#   - runs_on: Runner 類型（選填，預設：ubuntu-latest）
+#
+# 🔐 必要 Secrets：
+#   - SONAR_TOKEN: Sonar 存取權杖
+#   - SONAR_HOST_URL: SonarQube 伺服器網址（selfhosted 模式必填）
+#
+# ============================================================================
+
 name: Sonar Universal Scan (Template)
 
 on:
   workflow_call:
     inputs:
       mode:
-        description: "cloud 或 selfhosted"
+        description: "Scan mode: cloud or selfhosted"
         type: string
         required: true
 
@@ -19,11 +65,12 @@ on:
         required: true
 
       organization:
-        description: "SonarCloud 組織（cloud 模式需要）"
+        description: "SonarCloud organization (required for cloud mode)"
         type: string
         required: false
 
       runs_on:
+        description: "Runner type"
         type: string
         required: false
         default: '"ubuntu-latest"'
