@@ -96,6 +96,12 @@ jobs:
           echo "$VERSION" > version.txt
           echo "Generated version: $VERSION"
 
+      # --- 3️⃣.5 清理舊的 Docker 映像 ---
+      - name: Clean up previous Docker images
+        run: |
+          echo "Cleaning up dangling Docker images before build"
+          docker image prune -af || true
+
       # --- 4️⃣ 在 Runner 主機上手動 docker run Kaniko ---
       - name: Build and Push with Kaniko
         run: |
