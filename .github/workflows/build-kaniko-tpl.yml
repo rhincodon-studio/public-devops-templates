@@ -100,8 +100,8 @@ jobs:
       - name: Clean up previous Docker images
         run: |
           echo "Cleaning up dangling Docker images before build"
-          docker container prune || true
-          docker image prune -a || true
+          docker container prune -f || true
+          docker image prune -af || true
 
       # --- 4️⃣ 在 Runner 主機上手動 docker run Kaniko ---
       - name: Build and Push with Kaniko
