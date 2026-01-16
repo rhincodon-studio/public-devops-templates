@@ -155,8 +155,9 @@ jobs:
 
           # Run k8s-deploy in container
           # Chart is copied to temp dir inside container, so workspace won't be modified
+          # Note: workspace needs to be writable for git operations (git diff)
           docker run --rm \
-            -v $(pwd):/workspace:ro \
+            -v $(pwd):/workspace \
             -v ${{ steps.kubeconfig.outputs.kubeconfig_dir }}:/root/.kube:ro \
             -w /workspace \
             ${{ inputs.k8s_deploy_image }} \
