@@ -153,15 +153,13 @@ jobs:
           echo "   Image: ${{ inputs.k8s_deploy_image }}"
           echo "   Args: $ARGS"
 
-          # Run k8s-deploy in container with current user to avoid permission issues
+          # Run k8s-deploy in container
+          # Chart is copied to temp dir inside container, so workspace won't be modified
           docker run --rm \
-            --user $(id -u):$(id -g) \
-            -v $(pwd):/workspace \
-            -v ${{ steps.kubeconfig.outputs.kubeconfig_dir }}:/tmp/.kube:ro \
-            -e HOME=/tmp \
+            -v $(pwd):/workspace:ro \
+            -v ${{ steps.kubeconfig.outputs.kubeconfig_dir }}:/root/.kube:ro \
             -w /workspace \
             ${{ inputs.k8s_deploy_image }} \
-            --kubeconfig-dir /tmp/.kube \
             $ARGS
 
       - name: Summary
