@@ -37,8 +37,7 @@
 #         working_directory: "services/my-service"
 #         dockerfile_path: "Dockerfile"
 #         registry: "ghcr"
-#       secrets:
-#         GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#       secrets: inherit
 #
 # 📦 輸入參數：
 #   - repository: 儲存庫名稱（必填）
@@ -54,7 +53,8 @@
 #     - DOCKERHUB_USERNAME: Docker Hub 使用者名稱
 #     - DOCKERHUB_TOKEN: Docker Hub 存取權杖
 #   📌 GitHub Container Registry（registry: ghcr）：
-#     - GHCR_TOKEN: GitHub Token（建議使用 secrets.GITHUB_TOKEN）
+#     - 自動使用 github.token，無需額外設定 secrets
+#     - 調用端需設定 permissions: packages: write
 #
 # ============================================================================
 
@@ -99,8 +99,6 @@ on:
         required: false
       DOCKERHUB_TOKEN:
         required: false
-      GHCR_TOKEN:
-        required: false
 
 jobs:
   kaniko-build:
@@ -123,7 +121,7 @@ jobs:
         if: inputs.registry == 'ghcr'
         run: |
           mkdir -p ${HOME}/.docker
-          echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n ${{ github.actor }}:${{ secrets.GHCR_TOKEN }} | base64)"'"}}}' > ${HOME}/.docker/config.json
+          echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n ${{ github.actor }}:${{ github.token }} | base64)"'"}}}' > ${HOME}/.docker/config.json
           cat ${HOME}/.docker/config.json
 
       # --- 3️⃣ 計算版本號 (日期+commit) ---
