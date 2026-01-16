@@ -66,7 +66,7 @@ on:
         description: 'k8s-deploy container image'
         required: false
         type: string
-        default: 'ghcr.io/rhincodon-studio/k8s-deploy:2026-01-16.26b832f0'
+        default: 'ghcr.io/rhincodon-studio/k8s-deploy:2026-01-16.64bad4d8'
       kubeconfig_dir:
         description: 'Directory containing kubeconfig files on runner'
         required: false
