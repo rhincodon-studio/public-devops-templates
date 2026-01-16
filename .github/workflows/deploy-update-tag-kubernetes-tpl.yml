@@ -16,7 +16,8 @@
 #         cluster: "RKE2-TWTPH-LAB"
 #         namespace: "my-app"
 #         image_tag: "2024-01-01.abc12345"
-#       secrets: inherit
+#       secrets:
+#         GIT_TOKEN: ${{ secrets.GIT_TOKEN }}  # PAT with repo write access
 #
 # 📦 輸入參數：
 #   - app: 應用程式名稱（必填）
@@ -27,6 +28,9 @@
 #   - triggered_by: 觸發來源（選填）
 #   - commit_sha: 上游 commit SHA（選填）
 #   - runs_on: Runner 類型（選填）
+#
+# 🔐 必要 Secrets：
+#   - GIT_TOKEN: 有 repo write 權限的 GitHub PAT（用於 commit & push）
 #
 # 📤 輸出：
 #   - changed: 是否有變更 (true/false)
@@ -75,6 +79,11 @@ on:
         type: string
         default: '"ubuntu-latest"'
 
+    secrets:
+      GIT_TOKEN:
+        description: 'GitHub PAT with repo write access for commit & push'
+        required: true
+
     outputs:
       changed:
         description: 'Whether changes were committed'
@@ -90,7 +99,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GIT_TOKEN }}
           fetch-depth: 0
 
       - name: Determine values.yaml path
