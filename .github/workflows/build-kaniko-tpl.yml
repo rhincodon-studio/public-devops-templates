@@ -1,14 +1,17 @@
 # ============================================================================
 # Kaniko Build Template
 # ============================================================================
-# 
+#
 # 📋 功能說明：
 #   - 使用 Kaniko 在容器內建置 Docker 映像（無需 Docker daemon）
 #   - 自動產生版本標籤（日期.commit）
 #   - 支援 layer caching 加速建置
 #   - 輸出版本號到環境檔案
+#   - 支援推送至 DockerHub 或 GitHub Container Registry (GHCR)
 #
 # 🔧 使用方式：
+#
+#   📌 推送到 DockerHub（預設）：
 #   jobs:
 #     build:
 #       uses: ./.github/workflows/build-kaniko-tpl.yml
@@ -21,17 +24,34 @@
 #         DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 #         DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 #
+#   📌 推送到 GitHub Container Registry：
+#   jobs:
+#     build:
+#       uses: ./.github/workflows/build-kaniko-tpl.yml
+#       with:
+#         repository: "my-repo"
+#         container_repository: "myorg/my-service"
+#         working_directory: "services/my-service"
+#         dockerfile_path: "Dockerfile"
+#         registry: "ghcr"
+#       secrets:
+#         GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#
 # 📦 輸入參數：
 #   - repository: 儲存庫名稱（必填）
 #   - container_repository: 容器映像儲存庫路徑（必填）
 #   - working_directory: 工作目錄路徑（必填）
 #   - dockerfile_path: Dockerfile 相對路徑（必填）
+#   - registry: 目標 registry（選填，預設：dockerhub，可選：dockerhub / ghcr）
 #   - cache: 是否啟用 layer cache（選填，預設：true）
 #   - runs_on: Runner 類型（選填，預設：["self-hosted", "linux"]）
 #
 # 🔐 必要 Secrets：
-#   - DOCKERHUB_USERNAME: Docker Hub 使用者名稱
-#   - DOCKERHUB_TOKEN: Docker Hub 存取權杖
+#   📌 DockerHub（registry: dockerhub）：
+#     - DOCKERHUB_USERNAME: Docker Hub 使用者名稱
+#     - DOCKERHUB_TOKEN: Docker Hub 存取權杖
+#   📌 GitHub Container Registry（registry: ghcr）：
+#     - GHCR_TOKEN: GitHub Token（建議使用 secrets.GITHUB_TOKEN）
 #
 # ============================================================================
 
@@ -56,6 +76,11 @@ on:
         description: 'Dockerfile relative path'
         required: true
         type: string
+      registry:
+        description: 'Target container registry: dockerhub or ghcr'
+        required: false
+        type: string
+        default: 'dockerhub'
       cache:
         description: 'Enable layer caching'
         required: false
@@ -68,9 +93,11 @@ on:
         default: '["self-hosted", "linux"]'
     secrets:
       DOCKERHUB_USERNAME:
-        required: true
+        required: false
       DOCKERHUB_TOKEN:
-        required: true
+        required: false
+      GHCR_TOKEN:
+        required: false
 
 jobs:
   kaniko-build:
@@ -80,11 +107,20 @@ jobs:
       # --- 1️⃣ 檢出程式碼（在 Runner 主機執行） ---
       - uses: actions/checkout@v4
 
-      # --- 2️⃣ 設定 Docker Auth ---
-      - name: Configure Docker Auth
+      # --- 2️⃣ 設定 Docker Auth（DockerHub） ---
+      - name: Configure Docker Auth (DockerHub)
+        if: inputs.registry == 'dockerhub'
         run: |
           mkdir -p ${HOME}/.docker
           echo '{"auths":{"https://index.docker.io/v1/":{"auth":"'"$(echo -n ${{ secrets.DOCKERHUB_USERNAME }}:${{ secrets.DOCKERHUB_TOKEN }} | base64)"'"}}}' > ${HOME}/.docker/config.json
+          cat ${HOME}/.docker/config.json
+
+      # --- 2️⃣ 設定 Docker Auth（GitHub Container Registry） ---
+      - name: Configure Docker Auth (GHCR)
+        if: inputs.registry == 'ghcr'
+        run: |
+          mkdir -p ${HOME}/.docker
+          echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n ${{ github.actor }}:${{ secrets.GHCR_TOKEN }} | base64)"'"}}}' > ${HOME}/.docker/config.json
           cat ${HOME}/.docker/config.json
 
       # --- 3️⃣ 計算版本號 (日期+commit) ---
@@ -103,7 +139,17 @@ jobs:
           docker container prune -f || true
           docker image prune -af || true
 
-      # --- 4️⃣ 在 Runner 主機上手動 docker run Kaniko ---
+      # --- 4️⃣ 決定目標 Registry URL ---
+      - name: Set Registry URL
+        id: registry
+        run: |
+          if [ "${{ inputs.registry }}" == "ghcr" ]; then
+            echo "REGISTRY_URL=ghcr.io" >> $GITHUB_ENV
+          else
+            echo "REGISTRY_URL=docker.io" >> $GITHUB_ENV
+          fi
+
+      # --- 5️⃣ 在 Runner 主機上手動 docker run Kaniko ---
       - name: Build and Push with Kaniko
         run: |
           docker run \
@@ -112,11 +158,11 @@ jobs:
             gcr.io/kaniko-project/executor:v1.23.0-debug \
             --context /workspace \
             --dockerfile /workspace/${{ inputs.dockerfile_path }} \
-            --destination docker.io/${{ inputs.container_repository }}:${VERSION} \
+            --destination ${REGISTRY_URL}/${{ inputs.container_repository }}:${VERSION} \
             --cache=${{ inputs.cache }} \
             --image-fs-extract-retry 5
 
-      # --- 5️⃣ 輸出版本號 ---
+      # --- 6️⃣ 輸出版本號 ---
       - name: Export version
         run: |
           echo "VERSION=${VERSION}" >> "${{ inputs.repository }}.env"
