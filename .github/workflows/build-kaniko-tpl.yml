@@ -28,6 +28,9 @@
 #   jobs:
 #     build:
 #       uses: ./.github/workflows/build-kaniko-tpl.yml
+#       permissions:
+#         contents: read
+#         packages: write
 #       with:
 #         repository: "my-repo"
 #         container_repository: "myorg/my-service"
@@ -102,9 +105,6 @@ on:
 jobs:
   kaniko-build:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       # --- 1️⃣ 檢出程式碼（在 Runner 主機執行） ---

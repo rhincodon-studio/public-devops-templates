@@ -1,0 +1,126 @@
+# ============================================================================
+# Nx Affected Quality Check Template
+# ============================================================================
+#
+# 📋 功能說明：
+#   - 使用 Nx affected 機制，只對受影響的專案執行品質檢查
+#   - 自動偵測 PR 或 push 事件，設定正確的比較基準
+#   - 支援 lint、test、build、e2e 等任務
+#   - 大幅提升 monorepo CI 效率
+#
+# 🔧 使用方式：
+#   jobs:
+#     quality:
+#       uses: ./.github/workflows/quality-nx-affected-tpl.yml
+#       with:
+#         node_version: 20
+#         tasks: "lint test build"
+#
+#   📌 包含 e2e 測試（會自動安裝 Playwright）：
+#   jobs:
+#     quality:
+#       uses: ./.github/workflows/quality-nx-affected-tpl.yml
+#       with:
+#         tasks: "lint test build e2e"
+#         install_playwright: true
+#
+# 📦 輸入參數：
+#   - node_version: Node.js 版本（選填，預設：20）
+#   - tasks: 要執行的 Nx 任務，以空格分隔（選填，預設：lint test build）
+#   - install_playwright: 是否安裝 Playwright（選填，預設：false）
+#   - base_branch: 預設比較基準分支（選填，預設：main）
+#   - npm_install_args: npm ci 額外參數（選填，預設：--legacy-peer-deps）
+#   - runs_on: Runner 類型（選填，預設：ubuntu-latest）
+#
+# ============================================================================
+
+name: 🔍 Nx Affected Quality Check Template
+
+on:
+  workflow_call:
+    inputs:
+      node_version:
+        description: 'Node.js version'
+        required: false
+        type: string
+        default: '20'
+      tasks:
+        description: 'Nx tasks to run, space-separated (e.g. "lint test build e2e")'
+        required: false
+        type: string
+        default: 'lint test build'
+      install_playwright:
+        description: 'Install Playwright browsers for e2e testing'
+        required: false
+        type: boolean
+        default: false
+      base_branch:
+        description: 'Default base branch for comparison'
+        required: false
+        type: string
+        default: 'main'
+      npm_install_args:
+        description: 'Additional arguments for npm ci'
+        required: false
+        type: string
+        default: '--legacy-peer-deps'
+      runs_on:
+        description: 'Runner type'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+
+jobs:
+  nx-affected:
+    runs-on: ${{ inputs.runs_on }}
+
+    steps:
+      # --- 1️⃣ 檢出程式碼（需要完整 history 供 Nx 比較） ---
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # --- 2️⃣ 設定 Node.js 環境 ---
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+
+      # --- 3️⃣ 安裝依賴 ---
+      - name: Install dependencies
+        run: npm ci ${{ inputs.npm_install_args }}
+
+      # --- 4️⃣ 安裝 Playwright（如果需要） ---
+      - name: Install Playwright browsers
+        if: inputs.install_playwright
+        run: npx playwright install --with-deps
+
+      # --- 5️⃣ 設定 Nx 比較基準 ---
+      - name: Set Nx SHAs
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          SHA: ${{ github.sha }}
+          BASE_BRANCH: ${{ inputs.base_branch }}
+        run: |
+          if [ "${EVENT_NAME}" = "pull_request" ] && [ -n "${BASE_REF}" ]; then
+            echo "NX_BASE=origin/${BASE_REF}" >> $GITHUB_ENV
+            echo "📌 PR detected: comparing against origin/${BASE_REF}"
+          else
+            echo "NX_BASE=origin/${BASE_BRANCH}" >> $GITHUB_ENV
+            echo "📌 Push detected: comparing against origin/${BASE_BRANCH}"
+          fi
+          echo "NX_HEAD=${SHA}" >> $GITHUB_ENV
+
+      # --- 6️⃣ 執行受影響的任務 ---
+      - name: Run Nx affected tasks
+        run: |
+          echo "🔍 Running affected tasks: ${{ inputs.tasks }}"
+          echo "📊 Base: ${NX_BASE} → Head: ${NX_HEAD}"
+          npx nx affected -t ${{ inputs.tasks }}
+
+      # --- 7️⃣ 完成 ---
+      - name: Done
+        run: echo "✅ Nx affected quality check completed successfully."
