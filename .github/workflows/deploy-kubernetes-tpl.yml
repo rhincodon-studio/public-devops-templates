@@ -35,10 +35,10 @@
 #   - helm_timeout: Helm 部署超時時間（選填）
 #   - runs_on: Runner 類型（選填）
 #
-# 🔐 必要設定：
-#   - Self-hosted runner 需預先設定 kubeconfig 檔案
-#   - 格式：$KUBECONFIG_DIR/<cluster-name>
-#   - 需要 GHCR_TOKEN secret 來拉取私有映像（或將 k8s-deploy 設為公開）
+# 🔐 必要 Secrets：
+#   - KUBECONFIG_<CLUSTER_NAME>: Base64 編碼的 kubeconfig 內容
+#     例如：KUBECONFIG_RKE2_TWTPH_LAB（注意：cluster 名稱中的 - 需改為 _）
+#   - 產生方式：cat ~/.kube/config | base64 -w 0
 #
 # ============================================================================
 
@@ -82,6 +82,16 @@ on:
         required: false
         type: string
         default: '["self-hosted", "linux"]'
+      cluster:
+        description: 'Target cluster name (used to select kubeconfig secret)'
+        required: false
+        type: string
+        default: ''
+
+    secrets:
+      KUBECONFIG_RKE2_TWTPH_LAB:
+        description: 'Base64 encoded kubeconfig for RKE2-TWTPH-LAB cluster'
+        required: false
 
     outputs:
       deployed_charts:
@@ -105,6 +115,23 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+      - name: Setup kubeconfig from secrets
+        id: kubeconfig
+        run: |
+          mkdir -p $HOME/.kube-temp
+
+          # Write kubeconfig from secret (RKE2-TWTPH-LAB)
+          if [ -n "${{ secrets.KUBECONFIG_RKE2_TWTPH_LAB }}" ]; then
+            echo "${{ secrets.KUBECONFIG_RKE2_TWTPH_LAB }}" | base64 -d > $HOME/.kube-temp/RKE2-TWTPH-LAB
+            echo "✅ Loaded kubeconfig for RKE2-TWTPH-LAB"
+          fi
+
+          # List available kubeconfigs
+          echo "📂 Available kubeconfigs:"
+          ls -la $HOME/.kube-temp/ || echo "No kubeconfigs found"
+
+          echo "kubeconfig_dir=$HOME/.kube-temp" >> $GITHUB_OUTPUT
+
       - name: Deploy with k8s-deploy container
         id: deploy
         run: |
@@ -112,7 +139,7 @@ jobs:
           ARGS=""
 
           if [ -n "${{ inputs.charts }}" ]; then
-            ARGS="--charts '${{ inputs.charts }}'"
+            ARGS="--charts ${{ inputs.charts }}"
             echo "charts=${{ inputs.charts }}" >> $GITHUB_OUTPUT
           elif [ -n "${{ inputs.base_sha }}" ] && [ -n "${{ inputs.head_sha }}" ]; then
             ARGS="--base-sha ${{ inputs.base_sha }} --head-sha ${{ inputs.head_sha }}"
@@ -130,7 +157,7 @@ jobs:
           # Run k8s-deploy in container
           docker run --rm \
             -v $(pwd):/workspace \
-            -v ${{ inputs.kubeconfig_dir }}:/root/.kube:ro \
+            -v ${{ steps.kubeconfig.outputs.kubeconfig_dir }}:/root/.kube:ro \
             -w /workspace \
             ${{ inputs.k8s_deploy_image }} \
             $ARGS
