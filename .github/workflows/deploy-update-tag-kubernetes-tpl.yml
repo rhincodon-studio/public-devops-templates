@@ -1,0 +1,141 @@
+# ============================================================================
+# Update Kubernetes Image Tag Template
+# ============================================================================
+#
+# 📋 功能說明：
+#   - 更新 Helm chart 的 values.yaml 中的 image tag
+#   - 自動 commit 和 push 變更
+#   - 輸出是否有變更供下游 job 使用
+#
+# 🔧 使用方式：
+#   jobs:
+#     update-tag:
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-update-tag-kubernetes-tpl.yml@main
+#       with:
+#         app: "my-app"
+#         cluster: "RKE2-TWTPH-LAB"
+#         namespace: "my-app"
+#         image_tag: "2024-01-01.abc12345"
+#       secrets: inherit
+#
+# 📦 輸入參數：
+#   - app: 應用程式名稱（必填）
+#   - cluster: 目標叢集名稱（必填）
+#   - namespace: Kubernetes namespace（必填）
+#   - image_tag: 要更新的映像標籤（必填）
+#   - values_path: values.yaml 路徑模式（選填）
+#   - triggered_by: 觸發來源（選填）
+#   - commit_sha: 上游 commit SHA（選填）
+#   - runs_on: Runner 類型（選填）
+#
+# 📤 輸出：
+#   - changed: 是否有變更 (true/false)
+#
+# ============================================================================
+
+name: 🏷️ Update K8s Image Tag (Template)
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: 'Application name'
+        required: true
+        type: string
+      cluster:
+        description: 'Target cluster name'
+        required: true
+        type: string
+      namespace:
+        description: 'Kubernetes namespace'
+        required: true
+        type: string
+      image_tag:
+        description: 'Image tag to update'
+        required: true
+        type: string
+      values_path:
+        description: 'Path pattern for values.yaml (default: deploy/{app}/helm/{cluster}/{namespace}/values.yaml)'
+        required: false
+        type: string
+        default: ''
+      triggered_by:
+        description: 'Source that triggered this workflow'
+        required: false
+        type: string
+        default: 'manual'
+      commit_sha:
+        description: 'Upstream commit SHA'
+        required: false
+        type: string
+        default: 'N/A'
+      runs_on:
+        description: 'Runner type'
+        required: false
+        type: string
+        default: '"ubuntu-latest"'
+
+    outputs:
+      changed:
+        description: 'Whether changes were committed'
+        value: ${{ jobs.update-tag.outputs.changed }}
+
+jobs:
+  update-tag:
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Determine values.yaml path
+        id: path
+        run: |
+          if [ -n "${{ inputs.values_path }}" ]; then
+            VALUES_FILE="${{ inputs.values_path }}"
+          else
+            VALUES_FILE="deploy/${{ inputs.app }}/helm/${{ inputs.cluster }}/${{ inputs.namespace }}/values.yaml"
+          fi
+          echo "VALUES_FILE=$VALUES_FILE" >> $GITHUB_ENV
+          echo "values_file=$VALUES_FILE" >> $GITHUB_OUTPUT
+
+      - name: Update values.yaml image tag
+        run: |
+          if [ ! -f "$VALUES_FILE" ]; then
+            echo "❌ Values file not found: $VALUES_FILE"
+            exit 1
+          fi
+
+          echo "📝 Updating image tag in $VALUES_FILE to ${{ inputs.image_tag }}"
+
+          # Update the tag field under common.image
+          sed -i "s/^\(\s*tag:\s*\).*/\1\"${{ inputs.image_tag }}\"/" "$VALUES_FILE"
+
+          echo "✅ Updated values.yaml:"
+          grep -A 5 "image:" "$VALUES_FILE" | head -10
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and Push
+        id: commit
+        run: |
+          git add deploy/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            git commit -m "chore(${{ inputs.app }}): update image tag to ${{ inputs.image_tag }}
+
+          Triggered by: ${{ inputs.triggered_by }}
+          Commit: ${{ inputs.commit_sha }}"
+            git push
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi

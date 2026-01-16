@@ -1,134 +1,218 @@
 # ============================================================================
-# Kubernetes 部署 Template
+# Kubernetes Deploy Template
 # ============================================================================
-# 
+#
 # 📋 功能說明：
-#   - 自動化部署應用程式到 Kubernetes 集群
-#   - 使用 k8s-deploy 工具更新 kustomize overlay 配置
-#   - 支援多服務同時部署
-#   - 自動提交版本變更到 Git
+#   - 偵測 Git 變更中的 Helm chart
+#   - 自動部署變更的 chart 到 Kubernetes
+#   - 支援多叢集部署（根據路徑自動選擇 kubeconfig）
 #
 # 🔧 使用方式：
+#
+#   📌 自動偵測變更並部署：
 #   jobs:
 #     deploy:
-#       uses: ./.github/workflows/deploy-kubernetes-tpl.yml
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
 #       with:
-#         version: "2024-11-28.abc123"
-#         services: '["rs-scatter-hoarding", "rs-waggle-dance"]'
-#         overlays: '["RKE2-TWTPE-LAB/rs-scatter-hoarding-lab", "RKE2-TWTPE-LAB/rs-waggle-dance-lab"]'
-#         k8s-deploy-image: "myorg/k8s-deploy:v1.0.0"  # 選填
-#       secrets:
-#         KUBECONFIG: ${{ secrets.KUBECONFIG }}
+#         base_sha: ${{ github.event.before }}
+#         head_sha: ${{ github.sha }}
+#       secrets: inherit
+#
+#   📌 手動指定 chart 部署：
+#   jobs:
+#     deploy:
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+#       with:
+#         charts: "deploy/my-app/helm/RKE2-TWTPH-LAB/my-app"
+#       secrets: inherit
 #
 # 📦 輸入參數：
-#   - version: 要部署的版本號（必填）
-#   - services: 服務名稱列表，JSON 陣列格式（必填）
-#   - overlays: Kustomize overlay 路徑列表，JSON 陣列格式（必填）
-#   - k8s-deploy-image: k8s-deploy CLI 容器映像（選填，預設：myorg/k8s-deploy:latest）
-#   - deploy-path: deploy 目錄路徑（選填，預設：/workspace/deploy）
-#   - runs_on: Runner 類型（選填，預設：ubuntu-latest）
+#   - base_sha: 比較的基準 commit SHA（選填，用於自動偵測）
+#   - head_sha: 比較的目標 commit SHA（選填，用於自動偵測）
+#   - charts: 要部署的 chart 路徑，空格分隔（選填，手動指定）
+#   - deploy_path_pattern: deploy 路徑模式（選填）
+#   - kubeconfig_dir: kubeconfig 目錄（選填）
+#   - helm_timeout: Helm 部署超時時間（選填）
+#   - runs_on: Runner 類型（選填）
 #
-# 🔐 必要 Secrets：
-#   - KUBECONFIG: Base64 編碼的 kubeconfig 檔案內容
+# 🔐 必要設定：
+#   - Self-hosted runner 需預先設定 kubeconfig 檔案
+#   - 格式：$HOME/.kube/<cluster-name>
 #
 # ============================================================================
 
-name: K8s Deploy (Template)
+name: 🚀 K8s Deploy (Template)
 
 on:
   workflow_call:
     inputs:
-      version:
-        description: 'Version to deploy'
-        required: true
-        type: string
-
-      services:
-        description: 'JSON array of service names, e.g. ["service1", "service2"]'
-        required: true
-        type: string
-
-      overlays:
-        description: 'JSON array of overlay paths, e.g. ["cluster/service1", "cluster/service2"]'
-        required: true
-        type: string
-
-      k8s-deploy-image:
-        description: 'k8s-deploy CLI container image'
+      base_sha:
+        description: 'Base commit SHA for diff (for auto-detection)'
         required: false
         type: string
-        default: 'myorg/k8s-deploy:latest'
-
-      deploy-path:
-        description: 'Path to deploy directory'
+        default: ''
+      head_sha:
+        description: 'Head commit SHA for diff (for auto-detection)'
         required: false
         type: string
-        default: '/workspace/deploy'
-
+        default: ''
+      charts:
+        description: 'Space-separated chart paths to deploy (overrides auto-detection)'
+        required: false
+        type: string
+        default: ''
+      deploy_path_pattern:
+        description: 'Glob pattern for deploy paths'
+        required: false
+        type: string
+        default: 'deploy/*/helm/**'
+      kubeconfig_dir:
+        description: 'Directory containing kubeconfig files'
+        required: false
+        type: string
+        default: '$HOME/.kube'
+      helm_timeout:
+        description: 'Helm deployment timeout'
+        required: false
+        type: string
+        default: '5m'
       runs_on:
         description: 'Runner type'
         required: false
         type: string
-        default: '"ubuntu-latest"'
+        default: '["self-hosted", "linux"]'
 
-    secrets:
-      KUBECONFIG:
-        required: true
+    outputs:
+      deployed_charts:
+        description: 'List of deployed charts'
+        value: ${{ jobs.deploy.outputs.deployed_charts }}
 
 jobs:
   deploy:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
-    
+    outputs:
+      deployed_charts: ${{ steps.detect.outputs.charts }}
+
     steps:
-      - name: Checkout deploy repo
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
-      
-      - name: Configure Git
+
+      - name: Detect changed Helm charts
+        id: detect
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-      
-      - name: Prepare kubeconfig
-        run: |
-          mkdir -p ${{ github.workspace }}/.kube
-          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ${{ github.workspace }}/.kube/config
-      
-      - name: Deploy Services
-        run: |
-          SERVICES='${{ inputs.services }}'
-          OVERLAYS='${{ inputs.overlays }}'
-          
-          # Parse JSON arrays
-          SERVICE_ARRAY=($(echo $SERVICES | jq -r '.[]'))
-          OVERLAY_ARRAY=($(echo $OVERLAYS | jq -r '.[]'))
-          
-          # Deploy each service using k8s-deploy container
-          for i in "${!SERVICE_ARRAY[@]}"; do
-            SERVICE="${SERVICE_ARRAY[$i]}"
-            OVERLAY="${OVERLAY_ARRAY[$i]}"
-            
-            echo "🚀 Deploying $SERVICE with overlay $OVERLAY"
-            
-            docker run --rm \
-              -v ${{ github.workspace }}:/workspace \
-              -v ${{ github.workspace }}/.kube:/root/.kube:ro \
-              ${{ inputs.k8s-deploy-image }} \
-              pipeline \
-                --service "$SERVICE" \
-                --overlay "$OVERLAY" \
-                --version "${{ inputs.version }}" \
-                --deploy-path "${{ inputs.deploy-path }}"
+          # If charts are manually specified, use them
+          if [ -n "${{ inputs.charts }}" ]; then
+            echo "Using manually specified charts: ${{ inputs.charts }}"
+            echo "charts=${{ inputs.charts }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Auto-detect from git diff
+          BASE_SHA="${{ inputs.base_sha }}"
+          HEAD_SHA="${{ inputs.head_sha }}"
+
+          if [ -z "$BASE_SHA" ]; then
+            BASE_SHA="HEAD~1"
+          fi
+          if [ -z "$HEAD_SHA" ]; then
+            HEAD_SHA="HEAD"
+          fi
+
+          echo "Comparing $BASE_SHA..$HEAD_SHA"
+
+          # Find changed files in deploy/*/helm/
+          CHANGED_FILES=$(git diff --name-only $BASE_SHA $HEAD_SHA -- '${{ inputs.deploy_path_pattern }}' 2>/dev/null || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No helm chart changes detected"
+            echo "charts=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          # Extract unique chart directories
+          CHARTS=""
+          for file in $CHANGED_FILES; do
+            # Find the chart directory (contains Chart.yaml)
+            dir=$(dirname "$file")
+            while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
+              if [ -f "$dir/Chart.yaml" ]; then
+                if [[ ! "$CHARTS" =~ "$dir" ]]; then
+                  CHARTS="$CHARTS $dir"
+                fi
+                break
+              fi
+              dir=$(dirname "$dir")
+            done
           done
-      
-      - name: Commit and Push changes
+
+          CHARTS=$(echo "$CHARTS" | xargs)  # Trim whitespace
+          echo "Charts to deploy: $CHARTS"
+          echo "charts=$CHARTS" >> $GITHUB_OUTPUT
+
+      - name: Deploy charts
+        if: steps.detect.outputs.charts != ''
         run: |
-          git add deploy/
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
+          KUBECONFIG_DIR="${{ inputs.kubeconfig_dir }}"
+          KUBECONFIG_DIR="${KUBECONFIG_DIR/#\$HOME/$HOME}"
+
+          for chart in ${{ steps.detect.outputs.charts }}; do
+            echo "🚀 Deploying chart: $chart"
+
+            # Extract cluster and namespace from path
+            # Path format: deploy/<app>/helm/<cluster>/<namespace>
+            IFS='/' read -ra PARTS <<< "$chart"
+            APP="${PARTS[1]}"
+            CLUSTER="${PARTS[3]}"
+            NAMESPACE="${PARTS[4]}"
+
+            echo "  App: $APP"
+            echo "  Cluster: $CLUSTER"
+            echo "  Namespace: $NAMESPACE"
+
+            # Set kubeconfig for this cluster
+            if [ -f "$KUBECONFIG_DIR/$CLUSTER" ]; then
+              export KUBECONFIG="$KUBECONFIG_DIR/$CLUSTER"
+              echo "  Using kubeconfig: $KUBECONFIG"
+            else
+              echo "  ⚠️ Kubeconfig not found for cluster: $CLUSTER"
+              echo "  Using default kubeconfig"
+            fi
+
+            # Update helm dependencies
+            echo "  Updating helm dependencies..."
+            helm dependency update "$chart" 2>/dev/null || true
+
+            # Deploy with helm
+            echo "  Running helm upgrade..."
+            helm upgrade --install "$NAMESPACE" "$chart" \
+              --namespace "$NAMESPACE" \
+              --create-namespace \
+              --wait \
+              --timeout ${{ inputs.helm_timeout }}
+
+            echo "✅ Deployed $NAMESPACE to $CLUSTER"
+            echo ""
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.detect.outputs.charts }}" ]; then
+            echo "### Deployed Charts:" >> $GITHUB_STEP_SUMMARY
+            for chart in ${{ steps.detect.outputs.charts }}; do
+              IFS='/' read -ra PARTS <<< "$chart"
+              APP="${PARTS[1]}"
+              CLUSTER="${PARTS[3]}"
+              NAMESPACE="${PARTS[4]}"
+              echo "- **$APP** → \`$CLUSTER/$NAMESPACE\`" >> $GITHUB_STEP_SUMMARY
+            done
           else
-            git commit -m "chore: update version to ${{ inputs.version }}"
-            git push
+            echo "No charts were deployed." >> $GITHUB_STEP_SUMMARY
           fi

@@ -1,0 +1,126 @@
+# ============================================================================
+# Trigger Deploy Template
+# ============================================================================
+#
+# 📋 功能說明：
+#   - 在 CI build 成功後觸發 manifest repo 的部署 workflow
+#   - 使用 repository_dispatch 事件觸發
+#   - 自動計算版本號（日期.commit）
+#
+# 🔧 使用方式：
+#   jobs:
+#     build:
+#       # ... build job ...
+#
+#     trigger-deploy:
+#       needs: build
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-trigger-deploy-tpl.yml@main
+#       with:
+#         app: "my-app"
+#         cluster: "RKE2-TWTPH-LAB"
+#         namespace: "my-app"
+#         manifest_repo: "myorg/manifest-repo"
+#       secrets:
+#         MANIFEST_REPO_TOKEN: ${{ secrets.MANIFEST_REPO_TOKEN }}
+#
+# 📦 輸入參數：
+#   - app: 應用程式名稱（必填）
+#   - cluster: 目標叢集名稱（必填）
+#   - namespace: Kubernetes namespace（必填）
+#   - manifest_repo: manifest repo 路徑（必填）
+#   - image_tag: 映像標籤（選填，預設自動產生）
+#   - event_type: repository_dispatch 事件類型（選填）
+#   - runs_on: Runner 類型（選填）
+#
+# 🔐 必要 Secrets：
+#   - MANIFEST_REPO_TOKEN: 有權限觸發 manifest repo workflow 的 GitHub PAT
+#
+# ============================================================================
+
+name: 🔔 Trigger Deploy (Template)
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: 'Application name'
+        required: true
+        type: string
+      cluster:
+        description: 'Target cluster name'
+        required: true
+        type: string
+      namespace:
+        description: 'Kubernetes namespace'
+        required: true
+        type: string
+      manifest_repo:
+        description: 'Manifest repository (org/repo)'
+        required: true
+        type: string
+      image_tag:
+        description: 'Image tag (default: auto-generated YYYY-MM-DD.commit)'
+        required: false
+        type: string
+        default: ''
+      event_type:
+        description: 'Repository dispatch event type'
+        required: false
+        type: string
+        default: 'deploy-app'
+      runs_on:
+        description: 'Runner type'
+        required: false
+        type: string
+        default: '"ubuntu-latest"'
+
+    secrets:
+      MANIFEST_REPO_TOKEN:
+        description: 'GitHub PAT with repo scope to trigger manifest repo workflow'
+        required: true
+
+jobs:
+  trigger-deploy:
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+
+    steps:
+      - name: Generate version tag
+        id: version
+        run: |
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            VERSION="${{ inputs.image_tag }}"
+          else
+            VERSION="$(date '+%Y-%m-%d').${GITHUB_SHA::8}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Trigger manifest repo deployment
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.MANIFEST_REPO_TOKEN }}
+          repository: ${{ inputs.manifest_repo }}
+          event-type: ${{ inputs.event_type }}
+          client-payload: >-
+            {
+              "app": "${{ inputs.app }}",
+              "cluster": "${{ inputs.cluster }}",
+              "namespace": "${{ inputs.namespace }}",
+              "image_tag": "${{ env.VERSION }}",
+              "triggered_by": "${{ github.repository }}",
+              "commit_sha": "${{ github.sha }}",
+              "ref": "${{ github.ref }}",
+              "workflow_run_id": "${{ github.run_id }}"
+            }
+
+      - name: Summary
+        run: |
+          echo "## Deployment Triggered" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| App | \`${{ inputs.app }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cluster | \`${{ inputs.cluster }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Namespace | \`${{ inputs.namespace }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image Tag | \`${{ env.VERSION }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Manifest Repo | \`${{ inputs.manifest_repo }}\` |" >> $GITHUB_STEP_SUMMARY
