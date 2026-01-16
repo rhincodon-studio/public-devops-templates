@@ -3,7 +3,7 @@
 # ============================================================================
 #
 # 📋 功能說明：
-#   - 偵測 Git 變更中的 Helm chart
+#   - 使用 k8s-deploy 容器偵測 Git 變更中的 Helm chart
 #   - 自動部署變更的 chart 到 Kubernetes
 #   - 支援多叢集部署（根據路徑自動選擇 kubeconfig）
 #
@@ -30,14 +30,14 @@
 #   - base_sha: 比較的基準 commit SHA（選填，用於自動偵測）
 #   - head_sha: 比較的目標 commit SHA（選填，用於自動偵測）
 #   - charts: 要部署的 chart 路徑，空格分隔（選填，手動指定）
-#   - deploy_path_pattern: deploy 路徑模式（選填）
+#   - k8s_deploy_image: k8s-deploy 容器映像（選填）
 #   - kubeconfig_dir: kubeconfig 目錄（選填）
 #   - helm_timeout: Helm 部署超時時間（選填）
 #   - runs_on: Runner 類型（選填）
 #
 # 🔐 必要設定：
 #   - Self-hosted runner 需預先設定 kubeconfig 檔案
-#   - 格式：$HOME/.kube/<cluster-name>
+#   - 格式：$KUBECONFIG_DIR/<cluster-name>
 #
 # ============================================================================
 
@@ -61,16 +61,16 @@ on:
         required: false
         type: string
         default: ''
-      deploy_path_pattern:
-        description: 'Glob pattern for deploy paths'
+      k8s_deploy_image:
+        description: 'k8s-deploy container image'
         required: false
         type: string
-        default: 'deploy/*/helm/**'
+        default: 'ghcr.io/rhincodon-studio/k8s-deploy:2026-01-16.26b832f0'
       kubeconfig_dir:
-        description: 'Directory containing kubeconfig files'
+        description: 'Directory containing kubeconfig files on runner'
         required: false
         type: string
-        default: '$HOME/.kube'
+        default: '/home/user/.kube'
       helm_timeout:
         description: 'Helm deployment timeout'
         required: false
@@ -91,7 +91,7 @@ jobs:
   deploy:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
     outputs:
-      deployed_charts: ${{ steps.detect.outputs.charts }}
+      deployed_charts: ${{ steps.deploy.outputs.charts }}
 
     steps:
       - name: Checkout
@@ -99,120 +99,48 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect changed Helm charts
-        id: detect
+      - name: Deploy with k8s-deploy container
+        id: deploy
         run: |
-          # If charts are manually specified, use them
+          # Prepare arguments
+          ARGS=""
+
           if [ -n "${{ inputs.charts }}" ]; then
-            echo "Using manually specified charts: ${{ inputs.charts }}"
+            ARGS="--charts '${{ inputs.charts }}'"
             echo "charts=${{ inputs.charts }}" >> $GITHUB_OUTPUT
-            exit 0
+          elif [ -n "${{ inputs.base_sha }}" ] && [ -n "${{ inputs.head_sha }}" ]; then
+            ARGS="--base-sha ${{ inputs.base_sha }} --head-sha ${{ inputs.head_sha }}"
+          else
+            ARGS="--base-sha HEAD~1 --head-sha HEAD"
           fi
 
-          # Auto-detect from git diff
-          BASE_SHA="${{ inputs.base_sha }}"
-          HEAD_SHA="${{ inputs.head_sha }}"
+          ARGS="$ARGS --helm-timeout ${{ inputs.helm_timeout }}"
+          ARGS="$ARGS --kubeconfig-dir /root/.kube"
 
-          if [ -z "$BASE_SHA" ]; then
-            BASE_SHA="HEAD~1"
-          fi
-          if [ -z "$HEAD_SHA" ]; then
-            HEAD_SHA="HEAD"
-          fi
+          echo "🚀 Running k8s-deploy container"
+          echo "   Image: ${{ inputs.k8s_deploy_image }}"
+          echo "   Args: $ARGS"
 
-          echo "Comparing $BASE_SHA..$HEAD_SHA"
-
-          # Find changed files in deploy/*/helm/
-          CHANGED_FILES=$(git diff --name-only $BASE_SHA $HEAD_SHA -- '${{ inputs.deploy_path_pattern }}' 2>/dev/null || true)
-
-          if [ -z "$CHANGED_FILES" ]; then
-            echo "No helm chart changes detected"
-            echo "charts=" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          echo "Changed files:"
-          echo "$CHANGED_FILES"
-
-          # Extract unique chart directories
-          CHARTS=""
-          for file in $CHANGED_FILES; do
-            # Find the chart directory (contains Chart.yaml)
-            dir=$(dirname "$file")
-            while [ "$dir" != "." ] && [ "$dir" != "/" ]; do
-              if [ -f "$dir/Chart.yaml" ]; then
-                if [[ ! "$CHARTS" =~ "$dir" ]]; then
-                  CHARTS="$CHARTS $dir"
-                fi
-                break
-              fi
-              dir=$(dirname "$dir")
-            done
-          done
-
-          CHARTS=$(echo "$CHARTS" | xargs)  # Trim whitespace
-          echo "Charts to deploy: $CHARTS"
-          echo "charts=$CHARTS" >> $GITHUB_OUTPUT
-
-      - name: Deploy charts
-        if: steps.detect.outputs.charts != ''
-        run: |
-          KUBECONFIG_DIR="${{ inputs.kubeconfig_dir }}"
-          KUBECONFIG_DIR="${KUBECONFIG_DIR/#\$HOME/$HOME}"
-
-          for chart in ${{ steps.detect.outputs.charts }}; do
-            echo "🚀 Deploying chart: $chart"
-
-            # Extract cluster and namespace from path
-            # Path format: deploy/<app>/helm/<cluster>/<namespace>
-            IFS='/' read -ra PARTS <<< "$chart"
-            APP="${PARTS[1]}"
-            CLUSTER="${PARTS[3]}"
-            NAMESPACE="${PARTS[4]}"
-
-            echo "  App: $APP"
-            echo "  Cluster: $CLUSTER"
-            echo "  Namespace: $NAMESPACE"
-
-            # Set kubeconfig for this cluster
-            if [ -f "$KUBECONFIG_DIR/$CLUSTER" ]; then
-              export KUBECONFIG="$KUBECONFIG_DIR/$CLUSTER"
-              echo "  Using kubeconfig: $KUBECONFIG"
-            else
-              echo "  ⚠️ Kubeconfig not found for cluster: $CLUSTER"
-              echo "  Using default kubeconfig"
-            fi
-
-            # Update helm dependencies
-            echo "  Updating helm dependencies..."
-            helm dependency update "$chart" 2>/dev/null || true
-
-            # Deploy with helm
-            echo "  Running helm upgrade..."
-            helm upgrade --install "$NAMESPACE" "$chart" \
-              --namespace "$NAMESPACE" \
-              --create-namespace \
-              --wait \
-              --timeout ${{ inputs.helm_timeout }}
-
-            echo "✅ Deployed $NAMESPACE to $CLUSTER"
-            echo ""
-          done
+          # Run k8s-deploy in container
+          docker run --rm \
+            -v $(pwd):/workspace \
+            -v ${{ inputs.kubeconfig_dir }}:/root/.kube:ro \
+            -w /workspace \
+            ${{ inputs.k8s_deploy_image }} \
+            $ARGS
 
       - name: Summary
         if: always()
         run: |
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -n "${{ steps.detect.outputs.charts }}" ]; then
+          echo "**Image:** \`${{ inputs.k8s_deploy_image }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ inputs.charts }}" ]; then
             echo "### Deployed Charts:" >> $GITHUB_STEP_SUMMARY
-            for chart in ${{ steps.detect.outputs.charts }}; do
-              IFS='/' read -ra PARTS <<< "$chart"
-              APP="${PARTS[1]}"
-              CLUSTER="${PARTS[3]}"
-              NAMESPACE="${PARTS[4]}"
-              echo "- **$APP** → \`$CLUSTER/$NAMESPACE\`" >> $GITHUB_STEP_SUMMARY
+            for chart in ${{ inputs.charts }}; do
+              echo "- \`$chart\`" >> $GITHUB_STEP_SUMMARY
             done
-          else
-            echo "No charts were deployed." >> $GITHUB_STEP_SUMMARY
+          elif [ -n "${{ inputs.base_sha }}" ]; then
+            echo "**Mode:** Auto-detect from \`${{ inputs.base_sha }}..${{ inputs.head_sha }}\`" >> $GITHUB_STEP_SUMMARY
           fi
