@@ -1,167 +1,315 @@
-# Kubernetes Deploy Template
+# Kubernetes Deploy Pipeline
 
-自動化部署應用程式到 Kubernetes 集群。
+自動化 Kubernetes 部署流程，支援 CI 觸發、手動觸發和直接修改 manifest 三種方式。
 
-## 功能
+## 架構概覽
 
-- 使用 k8s-deploy 工具更新 kustomize overlay 配置
-- 支援多服務同時部署
-- 自動提交版本變更到 Git
-- 支援自訂 deploy 路徑
-
-## 使用方式
-
-```yaml
-jobs:
-  deploy:
-    uses: your-org/devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
-    with:
-      version: "2024-01-15.abc123"
-      services: '["api-server", "web-app"]'
-      overlays: '["cluster-a/api-server", "cluster-a/web-app"]'
-    secrets:
-      KUBECONFIG: ${{ secrets.KUBECONFIG }}
+```
+rs-apps (CI)                              rs-manifest (CD)
+┌──────────────────┐                      ┌─────────────────────────┐
+│ build-image      │                      │ update-tag              │
+│ (Kaniko)         │                      │   - 更新 values.yaml    │
+│       ↓          │                      │   - commit & push       │
+│ trigger-deploy   │ ──repository_────→   │       ↓                 │
+│                  │    dispatch          │ deploy                  │
+└──────────────────┘                      │   - 偵測變更 chart      │
+                                          │   - helm upgrade        │
+                                          └─────────────────────────┘
 ```
 
-## 輸入參數
+## 觸發方式
+
+| 觸發方式 | update-tag job | deploy job | 使用場景 |
+|----------|----------------|------------|----------|
+| **repository_dispatch** | ✅ 執行 | ✅ 執行 | CI pipeline 自動觸發 |
+| **workflow_dispatch** | ✅ 執行 | ✅ 執行 | 手動指定版本部署 |
+| **push** | ⏭️ 跳過 | ✅ 執行 | 直接修改 values.yaml |
+
+## Templates
+
+### 1. deploy-trigger-deploy-tpl.yml
+
+在 CI build 成功後觸發 manifest repo 的部署 workflow。
+
+**使用方式：**
+
+```yaml
+trigger-deploy:
+  needs: build-image
+  if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-trigger-deploy-tpl.yml@main
+  with:
+    app: my-app
+    cluster: RKE2-TWTPH-LAB
+    namespace: my-app
+    manifest_repo: myorg/manifest-repo
+  secrets:
+    MANIFEST_REPO_TOKEN: ${{ secrets.MANIFEST_REPO_TOKEN }}
+```
+
+**輸入參數：**
 
 | 參數 | 必填 | 預設值 | 說明 |
 |------|------|--------|------|
-| `version` | 是 | - | 要部署的版本號 |
-| `services` | 是 | - | 服務名稱列表，JSON 陣列格式 |
-| `overlays` | 是 | - | Kustomize overlay 路徑列表，JSON 陣列格式 |
-| `k8s-deploy-image` | 否 | `myorg/k8s-deploy:latest` | k8s-deploy CLI 容器映像 |
-| `deploy-path` | 否 | `/workspace/deploy` | deploy 目錄路徑 |
-| `runs_on` | 否 | `ubuntu-latest` | Runner 類型 |
+| `app` | 是 | - | 應用程式名稱 |
+| `cluster` | 是 | - | 目標叢集名稱 |
+| `namespace` | 是 | - | Kubernetes namespace |
+| `manifest_repo` | 是 | - | manifest repo 路徑 (org/repo) |
+| `image_tag` | 否 | 自動產生 | 映像標籤 (預設: YYYY-MM-DD.commit) |
+| `event_type` | 否 | `deploy-app` | repository_dispatch 事件類型 |
 
-## 必要 Secrets
+**必要 Secrets：**
 
 | Secret | 說明 |
 |--------|------|
-| `KUBECONFIG` | Base64 編碼的 kubeconfig 檔案內容 |
+| `MANIFEST_REPO_TOKEN` | 有權限觸發 manifest repo workflow 的 GitHub PAT |
 
-## 參數格式說明
+---
 
-### services（JSON 陣列）
+### 2. deploy-update-tag-kubernetes-tpl.yml
 
-```json
-["service-a", "service-b", "service-c"]
+更新 Helm chart 的 `values.yaml` 中的 image tag。
+
+**使用方式：**
+
+```yaml
+update-tag:
+  uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-update-tag-kubernetes-tpl.yml@main
+  with:
+    app: my-app
+    cluster: RKE2-TWTPH-LAB
+    namespace: my-app
+    image_tag: "2026-01-16.abc12345"
+  secrets:
+    GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
 ```
 
-### overlays（JSON 陣列）
+**輸入參數：**
 
-```json
-["cluster-name/service-a", "cluster-name/service-b", "cluster-name/service-c"]
+| 參數 | 必填 | 預設值 | 說明 |
+|------|------|--------|------|
+| `app` | 是 | - | 應用程式名稱 |
+| `cluster` | 是 | - | 目標叢集名稱 |
+| `namespace` | 是 | - | Kubernetes namespace |
+| `image_tag` | 是 | - | 要更新的映像標籤 |
+| `values_path` | 否 | 自動計算 | values.yaml 路徑 |
+| `triggered_by` | 否 | `manual` | 觸發來源 |
+| `commit_sha` | 否 | `N/A` | 上游 commit SHA |
+
+**必要 Secrets：**
+
+| Secret | 說明 |
+|--------|------|
+| `GIT_TOKEN` | 有 repo write 權限的 GitHub PAT |
+
+**輸出：**
+
+| 輸出 | 說明 |
+|------|------|
+| `changed` | 是否有變更 (true/false) |
+
+---
+
+### 3. deploy-kubernetes-tpl.yml
+
+偵測變更的 Helm chart 並部署到 Kubernetes。
+
+**使用方式：**
+
+```yaml
+# 自動偵測變更
+deploy:
+  uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+  with:
+    base_sha: ${{ github.event.before }}
+    head_sha: ${{ github.sha }}
+  secrets: inherit
+
+# 手動指定 chart
+deploy:
+  uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+  with:
+    charts: "deploy/my-app/helm/RKE2-TWTPH-LAB/my-app"
+  secrets: inherit
 ```
 
-> **注意**：`services` 和 `overlays` 的順序必須對應
+**輸入參數：**
+
+| 參數 | 必填 | 預設值 | 說明 |
+|------|------|--------|------|
+| `base_sha` | 否 | `HEAD~1` | 比較的基準 commit SHA |
+| `head_sha` | 否 | `HEAD` | 比較的目標 commit SHA |
+| `charts` | 否 | - | 手動指定 chart 路徑（空格分隔） |
+| `deploy_path_pattern` | 否 | `deploy/*/helm/**` | deploy 路徑模式 |
+| `kubeconfig_dir` | 否 | `$HOME/.kube` | kubeconfig 目錄 |
+| `helm_timeout` | 否 | `5m` | Helm 部署超時時間 |
+| `runs_on` | 否 | `["self-hosted", "linux"]` | Runner 類型 |
+
+**必要設定：**
+
+- Self-hosted runner 需預先設定 kubeconfig 檔案
+- 格式：`$HOME/.kube/<cluster-name>`
+
+---
 
 ## 完整範例
 
-### 單一服務部署
+### CI Workflow (rs-apps)
 
 ```yaml
-name: Deploy to Production
-
-on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to deploy'
-        required: true
-
-jobs:
-  deploy:
-    uses: your-org/devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
-    with:
-      version: ${{ github.event.inputs.version }}
-      services: '["api-server"]'
-      overlays: '["prod-cluster/api-server"]'
-    secrets:
-      KUBECONFIG: ${{ secrets.KUBECONFIG }}
-```
-
-### 多服務部署
-
-```yaml
-name: Deploy All Services
+name: 🧩 my-app
 
 on:
   push:
     branches: [main]
+    paths:
+      - 'apps/my-app/**'
+  pull_request:
+    paths:
+      - 'apps/my-app/**'
+  workflow_dispatch:
 
 jobs:
-  build:
-    # ... 建置步驟
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-
-  deploy:
-    needs: build
-    uses: your-org/devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+  build-image:
+    uses: rhincodon-studio/public-devops-templates/.github/workflows/build-kaniko-tpl.yml@main
+    permissions:
+      contents: read
+      packages: write
     with:
-      version: ${{ needs.build.outputs.version }}
-      services: '["api-server", "web-app", "worker"]'
-      overlays: '["prod/api-server", "prod/web-app", "prod/worker"]'
+      repository: my_app
+      registry: ghcr
+      container_repository: myorg/my-app
+      working_directory: .
+      dockerfile_path: apps/my-app/Dockerfile
+    secrets: inherit
+
+  trigger-deploy:
+    needs: build-image
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-trigger-deploy-tpl.yml@main
+    with:
+      app: my-app
+      cluster: RKE2-TWTPH-LAB
+      namespace: my-app
+      manifest_repo: myorg/manifest-repo
     secrets:
-      KUBECONFIG: ${{ secrets.KUBECONFIG }}
+      MANIFEST_REPO_TOKEN: ${{ secrets.MANIFEST_REPO_TOKEN }}
 ```
 
-### 多環境部署
+### CD Workflow (manifest-repo)
 
 ```yaml
-name: Deploy to Staging
+name: 🚀 Deploy to Kubernetes
 
 on:
+  repository_dispatch:
+    types: [deploy-app]
+
   push:
-    branches: [develop]
+    branches: [main]
+    paths:
+      - 'deploy/**/helm/**'
+
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Application name'
+        required: true
+        type: choice
+        options:
+          - my-app
+          - other-app
+      cluster:
+        description: 'Target cluster'
+        required: true
+        type: choice
+        options:
+          - RKE2-TWTPH-LAB
+      namespace:
+        description: 'Kubernetes namespace'
+        required: true
+        type: choice
+        options:
+          - my-app
+          - other-app
+      image_tag:
+        description: 'Image tag to deploy'
+        required: true
+        type: string
 
 jobs:
-  deploy-staging:
-    uses: your-org/devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+  update-tag:
+    if: github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch'
+    uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-update-tag-kubernetes-tpl.yml@main
     with:
-      version: "staging-${{ github.sha }}"
-      services: '["api-server"]'
-      overlays: '["staging-cluster/api-server"]'
+      app: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.app || inputs.app }}
+      cluster: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.cluster || inputs.cluster }}
+      namespace: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.namespace || inputs.namespace }}
+      image_tag: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.image_tag || inputs.image_tag }}
+      triggered_by: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.triggered_by || 'manual' }}
+      commit_sha: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.commit_sha || 'N/A' }}
     secrets:
-      KUBECONFIG: ${{ secrets.STAGING_KUBECONFIG }}
+      GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+
+  deploy:
+    needs: [update-tag]
+    if: |
+      always() &&
+      (needs.update-tag.result == 'success' && needs.update-tag.outputs.changed == 'true') ||
+      (github.event_name == 'push')
+    uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+    with:
+      base_sha: ${{ github.event_name == 'push' && github.event.before || '' }}
+      head_sha: ${{ github.event_name == 'push' && github.sha || '' }}
+    secrets: inherit
 ```
 
-## KUBECONFIG 設定
-
-### 產生 Base64 編碼的 kubeconfig
-
-```bash
-cat ~/.kube/config | base64 -w 0
-```
-
-或在 macOS：
-
-```bash
-cat ~/.kube/config | base64
-```
-
-### 設定 GitHub Secret
-
-1. 前往 Repository Settings → Secrets and variables → Actions
-2. 新增 secret：`KUBECONFIG`
-3. 貼上 Base64 編碼的內容
+---
 
 ## 目錄結構
 
-預期的 deploy 目錄結構：
+```
+manifest-repo/
+├── .github/
+│   └── workflows/
+│       └── deploy.yml
+└── deploy/
+    └── my-app/
+        └── helm/
+            └── RKE2-TWTPH-LAB/
+                └── my-app/
+                    ├── Chart.yaml
+                    ├── values.yaml
+                    └── templates/
+                        ├── app-deploy.yaml
+                        └── ingress.yaml
+```
 
-```
-deploy/
-├── base/
-│   └── kustomization.yaml
-└── overlays/
-    ├── prod-cluster/
-    │   ├── api-server/
-    │   │   └── kustomization.yaml
-    │   └── web-app/
-    │       └── kustomization.yaml
-    └── staging-cluster/
-        └── api-server/
-            └── kustomization.yaml
-```
+---
+
+## 必要 Secrets 設定
+
+### CI Repo (rs-apps)
+
+| Secret | 說明 |
+|--------|------|
+| `MANIFEST_REPO_TOKEN` | 有權限觸發 manifest repo workflow 的 GitHub PAT (需要 `repo` scope) |
+
+### CD Repo (manifest-repo)
+
+| Secret | 說明 |
+|--------|------|
+| `GIT_TOKEN` | 有 repo write 權限的 GitHub PAT (用於 commit & push values.yaml) |
+
+### Self-hosted Runner
+
+- 預先設定 kubeconfig 檔案於 `$HOME/.kube/<cluster-name>`
+- 安裝 `helm` CLI
+
+---
+
+## 版本標籤格式
+
+映像標籤自動產生格式：`YYYY-MM-DD.{commit_sha_8}`
+
+例如：`2026-01-16.abc12345`

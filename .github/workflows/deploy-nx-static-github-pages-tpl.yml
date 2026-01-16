@@ -1,0 +1,210 @@
+# ============================================================================
+# Static Site Deploy to GitHub Pages Template
+# ============================================================================
+#
+# 📋 功能說明：
+#   - 使用 Nx 建置 Angular/React 等靜態網站專案
+#   - 將建置產物部署到另一個 GitHub Repository 的 gh-pages 分支
+#   - 支援自訂網域 (CNAME)
+#   - 適用於 monorepo 中的靜態網站專案
+#
+# 🔧 使用方式：
+#
+#   📌 基本使用（部署到另一個 repository）：
+#   jobs:
+#     build:
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-nx-static-github-pages-tpl.yml@v1.3.0
+#       with:
+#         project_name: "my-website"
+#         target_repository: "myorg/my-website-pages"
+#       secrets:
+#         DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+#
+#   📌 包含自訂網域：
+#   jobs:
+#     build:
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-nx-static-github-pages-tpl.yml@v1.3.0
+#       with:
+#         project_name: "my-website"
+#         target_repository: "myorg/my-website-pages"
+#         custom_domain: "www.example.com"
+#       secrets:
+#         DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+#
+#   📌 指定建置配置：
+#   jobs:
+#     build:
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-nx-static-github-pages-tpl.yml@v1.3.0
+#       with:
+#         project_name: "my-website"
+#         target_repository: "myorg/my-website-pages"
+#         build_configuration: "staging"
+#         output_path: "dist/apps/my-website/browser"
+#       secrets:
+#         DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+#
+# 📦 輸入參數：
+#   - project_name: Nx 專案名稱（必填）
+#   - target_repository: 目標 GitHub Repository（必填，格式：owner/repo）
+#   - build_configuration: 建置配置（選填，預設：production）
+#   - output_path: 建置輸出路徑（選填，預設：dist/apps/{project_name}/browser）
+#   - target_branch: 目標分支（選填，預設：gh-pages）
+#   - custom_domain: 自訂網域 CNAME（選填）
+#   - node_version: Node.js 版本（選填，預設：20）
+#   - npm_install_args: npm ci 額外參數（選填，預設：--legacy-peer-deps）
+#   - runs_on: Runner 類型（選填，預設：ubuntu-latest）
+#   - skip_deploy: 是否跳過部署（選填，預設：false，用於 PR 驗證）
+#
+# 🔐 必要 Secrets：
+#   - DEPLOY_TOKEN: 有目標 repository 寫入權限的 Personal Access Token (PAT)
+#                   需要 repo scope 權限
+#
+# ⚙️ 目標 Repository 設定：
+#   1. 在目標 repo 的 Settings → Pages 中選擇 Source 為 "Deploy from a branch"
+#   2. 選擇 gh-pages 分支作為來源
+#   3. 如果使用自訂網域，需在目標 repo 或 DNS 設定中配置
+#
+# ============================================================================
+
+name: 🚀 Static Site Deploy to GitHub Pages Template
+
+on:
+  workflow_call:
+    inputs:
+      project_name:
+        description: 'Nx project name to build'
+        required: true
+        type: string
+      target_repository:
+        description: 'Target GitHub repository (format: owner/repo)'
+        required: true
+        type: string
+      build_configuration:
+        description: 'Build configuration (e.g., production, staging)'
+        required: false
+        type: string
+        default: 'production'
+      output_path:
+        description: 'Build output path (default: dist/apps/{project_name}/browser)'
+        required: false
+        type: string
+        default: ''
+      target_branch:
+        description: 'Target branch for deployment'
+        required: false
+        type: string
+        default: 'gh-pages'
+      custom_domain:
+        description: 'Custom domain for CNAME file'
+        required: false
+        type: string
+        default: ''
+      node_version:
+        description: 'Node.js version'
+        required: false
+        type: string
+        default: '20'
+      npm_install_args:
+        description: 'Additional arguments for npm ci'
+        required: false
+        type: string
+        default: '--legacy-peer-deps'
+      runs_on:
+        description: 'Runner type'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
+      skip_deploy:
+        description: 'Skip deployment (useful for PR validation)'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      DEPLOY_TOKEN:
+        description: 'Personal Access Token with repo scope for target repository'
+        required: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ${{ inputs.runs_on }}
+
+    steps:
+      # --- 1️⃣ 檢出程式碼 ---
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # --- 2️⃣ 設定 Node.js 環境 ---
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+
+      # --- 3️⃣ 安裝依賴 ---
+      - name: Install dependencies
+        run: npm ci ${{ inputs.npm_install_args }}
+
+      # --- 4️⃣ 建置專案 ---
+      - name: Build project
+        run: |
+          echo "🏗️ Building ${{ inputs.project_name }} with configuration: ${{ inputs.build_configuration }}"
+          npx nx build ${{ inputs.project_name }} --configuration=${{ inputs.build_configuration }}
+
+      # --- 5️⃣ 決定輸出路徑 ---
+      - name: Determine output path
+        id: output
+        run: |
+          if [ -n "${{ inputs.output_path }}" ]; then
+            OUTPUT_PATH="${{ inputs.output_path }}"
+          else
+            # Try browser subfolder first (Angular 17+), fallback to project folder
+            if [ -d "dist/apps/${{ inputs.project_name }}/browser" ]; then
+              OUTPUT_PATH="dist/apps/${{ inputs.project_name }}/browser"
+            else
+              OUTPUT_PATH="dist/apps/${{ inputs.project_name }}"
+            fi
+          fi
+          echo "OUTPUT_PATH=${OUTPUT_PATH}" >> $GITHUB_OUTPUT
+          echo "📁 Output path: ${OUTPUT_PATH}"
+
+      # --- 6️⃣ 驗證建置產物 ---
+      - name: Verify build output
+        run: |
+          if [ ! -d "${{ steps.output.outputs.OUTPUT_PATH }}" ]; then
+            echo "❌ Build output directory not found: ${{ steps.output.outputs.OUTPUT_PATH }}"
+            exit 1
+          fi
+          echo "✅ Build output verified"
+          ls -la "${{ steps.output.outputs.OUTPUT_PATH }}"
+
+      # --- 7️⃣ 上傳建置產物（供後續使用或偵錯） ---
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.project_name }}-dist
+          path: ${{ steps.output.outputs.OUTPUT_PATH }}
+          retention-days: 7
+
+      # --- 8️⃣ 部署到目標 Repository ---
+      - name: Deploy to GitHub Pages
+        if: ${{ !inputs.skip_deploy }}
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.DEPLOY_TOKEN }}
+          external_repository: ${{ inputs.target_repository }}
+          publish_branch: ${{ inputs.target_branch }}
+          publish_dir: ${{ steps.output.outputs.OUTPUT_PATH }}
+          cname: ${{ inputs.custom_domain }}
+          commit_message: "deploy: ${{ inputs.project_name }} @ ${{ github.sha }}"
+
+      # --- 9️⃣ 完成 ---
+      - name: Done
+        run: |
+          if [ "${{ inputs.skip_deploy }}" == "true" ]; then
+            echo "✅ Build completed successfully (deployment skipped)"
+          else
+            echo "✅ Deployed ${{ inputs.project_name }} to ${{ inputs.target_repository }}"
+            echo "🌐 Site will be available at: https://${{ inputs.target_repository | split('/', 2) | last }}.github.io"
+          fi
