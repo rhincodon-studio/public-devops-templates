@@ -102,6 +102,9 @@ on:
 jobs:
   kaniko-build:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       # --- 1️⃣ 檢出程式碼（在 Runner 主機執行） ---
