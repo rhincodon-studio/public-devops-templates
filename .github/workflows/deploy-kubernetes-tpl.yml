@@ -148,18 +148,20 @@ jobs:
           fi
 
           ARGS="$ARGS --helm-timeout ${{ inputs.helm_timeout }}"
-          ARGS="$ARGS --kubeconfig-dir /root/.kube"
 
           echo "🚀 Running k8s-deploy container"
           echo "   Image: ${{ inputs.k8s_deploy_image }}"
           echo "   Args: $ARGS"
 
-          # Run k8s-deploy in container
+          # Run k8s-deploy in container with current user to avoid permission issues
           docker run --rm \
+            --user $(id -u):$(id -g) \
             -v $(pwd):/workspace \
-            -v ${{ steps.kubeconfig.outputs.kubeconfig_dir }}:/root/.kube:ro \
+            -v ${{ steps.kubeconfig.outputs.kubeconfig_dir }}:/tmp/.kube:ro \
+            -e HOME=/tmp \
             -w /workspace \
             ${{ inputs.k8s_deploy_image }} \
+            --kubeconfig-dir /tmp/.kube \
             $ARGS
 
       - name: Summary
