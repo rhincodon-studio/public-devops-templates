@@ -6,7 +6,6 @@
 
 | 類別 | Template | 說明 |
 |------|----------|------|
-| **Build** | [build-docker-tpl](docs/build-docker.md) | 使用 Docker 建置並推送映像到 DockerHub |
 | **Build** | [build-kaniko-tpl](docs/build-kaniko.md) | 使用 Kaniko 建置映像（支援 DockerHub / GHCR） |
 | **Quality** | [quality-nx-affected-tpl](docs/quality-nx-affected.md) | Nx monorepo 受影響專案品質檢查 |
 | **Security** | [scan-checkmarx-tpl](docs/scan-checkmarx.md) | Checkmarx AST SAST 靜態安全掃描 |
@@ -49,7 +48,6 @@ jobs:
 
 詳細使用說明請參閱 [docs](docs/) 目錄：
 
-- [Docker Build](docs/build-docker.md)
 - [Kaniko Build](docs/build-kaniko.md)
 - [Nx Affected Quality Check](docs/quality-nx-affected.md)
 - [Checkmarx SAST](docs/scan-checkmarx.md)
