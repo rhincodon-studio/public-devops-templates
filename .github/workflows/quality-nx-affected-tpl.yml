@@ -81,6 +81,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      # --- 1️⃣.5 Fetch 所有遠端分支（確保 base branch 存在） ---
+      - name: Fetch all branches
+        run: |
+          git fetch --all --prune
+          echo "📋 Available branches:"
+          git branch -r
+
       # --- 2️⃣ 設定 Node.js 環境 ---
       - name: Setup Node.js
         uses: actions/setup-node@v4
