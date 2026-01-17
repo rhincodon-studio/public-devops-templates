@@ -153,12 +153,18 @@ jobs:
           echo "   Image: ${{ inputs.k8s_deploy_image }}"
           echo "   Args: $ARGS"
 
+          # Debug: check if .git exists
+          echo "📂 Checking workspace:"
+          ls -la $(pwd)/ | head -10
+          echo "📂 .git exists: $(test -d .git && echo 'yes' || echo 'no')"
+
           # Run k8s-deploy in container
           # Chart is copied to temp dir inside container, so workspace won't be modified
           # Note: workspace needs to be writable for git operations (git diff)
           docker run --rm \
             -v $(pwd):/workspace \
             -v ${{ steps.kubeconfig.outputs.kubeconfig_dir }}:/root/.kube:ro \
+            -e GIT_DISCOVERY_ACROSS_FILESYSTEM=1 \
             -w /workspace \
             ${{ inputs.k8s_deploy_image }} \
             $ARGS
