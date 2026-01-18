@@ -68,6 +68,11 @@ on:
         required: false
         type: string
         default: 'deploy-app'
+      tag_yaml_path:
+        description: 'YAML path to tag field (e.g., "backend.image.tag" for backend deployments)'
+        required: false
+        type: string
+        default: 'common.image.tag'
       runs_on:
         description: 'Runner type'
         required: false
@@ -107,6 +112,7 @@ jobs:
               "cluster": "${{ inputs.cluster }}",
               "namespace": "${{ inputs.namespace }}",
               "image_tag": "${{ env.VERSION }}",
+              "tag_yaml_path": "${{ inputs.tag_yaml_path }}",
               "triggered_by": "${{ github.repository }}",
               "commit_sha": "${{ github.sha }}",
               "ref": "${{ github.ref }}",

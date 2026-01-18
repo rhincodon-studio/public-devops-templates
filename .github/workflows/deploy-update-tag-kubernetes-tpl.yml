@@ -63,6 +63,11 @@ on:
         required: false
         type: string
         default: ''
+      tag_yaml_path:
+        description: 'YAML path to tag field (e.g., "backend.image.tag" or "common.image.tag")'
+        required: false
+        type: string
+        default: 'common.image.tag'
       triggered_by:
         description: 'Source that triggered this workflow'
         required: false
@@ -120,13 +125,21 @@ jobs:
             exit 1
           fi
 
-          echo "📝 Updating image tag in $VALUES_FILE to ${{ inputs.image_tag }}"
+          TAG_PATH="${{ inputs.tag_yaml_path }}"
+          echo "📝 Updating $TAG_PATH in $VALUES_FILE to ${{ inputs.image_tag }}"
 
-          # Update the tag field under common.image
-          sed -i "s/^\(\s*tag:\s*\).*/\1\"${{ inputs.image_tag }}\"/" "$VALUES_FILE"
+          # Install yq if not available
+          if ! command -v yq &> /dev/null; then
+            echo "Installing yq..."
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+
+          # Update specific tag path using yq
+          yq -i ".$TAG_PATH = \"${{ inputs.image_tag }}\"" "$VALUES_FILE"
 
           echo "✅ Updated values.yaml:"
-          grep -A 5 "image:" "$VALUES_FILE" | head -10
+          yq ".$TAG_PATH" "$VALUES_FILE"
 
       - name: Configure Git
         run: |
