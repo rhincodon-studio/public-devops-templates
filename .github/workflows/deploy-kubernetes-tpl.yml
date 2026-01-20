@@ -166,10 +166,11 @@ jobs:
             -v $(pwd):/workspace \
             -v ${{ steps.kubeconfig.outputs.kubeconfig_dir }}:/root/.kube:ro \
             -e GIT_DISCOVERY_ACROSS_FILESYSTEM=1 \
+            -e HELM_DEBUG=1 \
             -w /workspace \
             --entrypoint /bin/sh \
             ${{ inputs.k8s_deploy_image }} \
-            -c "git config --global --add safe.directory /workspace && /k8s-deploy $ARGS"
+            -c "echo '🔍 Debug info:' && helm version && echo '📂 Chart dependencies:' && ls -la /workspace/deploy/*/helm/*/*/charts/ 2>/dev/null || echo 'No charts dir found' && git config --global --add safe.directory /workspace && /k8s-deploy $ARGS"
 
       - name: Summary
         if: always()
