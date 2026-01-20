@@ -89,12 +89,14 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
 
     steps:
-      - name: Generate version tag
+      - name: Validate and set version tag
         id: version
         run: |
-          if [ -n "${{ inputs.image_tag }}" ]; then
-            VERSION="${{ inputs.image_tag }}"
+          if [ -z "${{ inputs.image_tag }}" ]; then
+            echo "::error::image_tag is required. Please pass it from the build job output."
+            exit 1
           fi
+          VERSION="${{ inputs.image_tag }}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 

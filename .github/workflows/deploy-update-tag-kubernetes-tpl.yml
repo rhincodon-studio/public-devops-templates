@@ -118,7 +118,18 @@ jobs:
           echo "VALUES_FILE=$VALUES_FILE" >> $GITHUB_ENV
           echo "values_file=$VALUES_FILE" >> $GITHUB_OUTPUT
 
+      - name: Validate image tag
+        id: validate
+        run: |
+          if [ -z "${{ inputs.image_tag }}" ]; then
+            echo "⚠️ image_tag is empty, skipping update"
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Update values.yaml image tag
+        if: steps.validate.outputs.skip != 'true'
         run: |
           if [ ! -f "$VALUES_FILE" ]; then
             echo "❌ Values file not found: $VALUES_FILE"
@@ -142,6 +153,7 @@ jobs:
           yq ".$TAG_PATH" "$VALUES_FILE"
 
       - name: Configure Git
+        if: steps.validate.outputs.skip != 'true'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -149,6 +161,12 @@ jobs:
       - name: Commit and Push
         id: commit
         run: |
+          if [ "${{ steps.validate.outputs.skip }}" == "true" ]; then
+            echo "⚠️ Skipped: image_tag is empty"
+            echo "changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           git add deploy/
           if git diff --staged --quiet; then
             echo "No changes to commit"
