@@ -99,6 +99,10 @@ on:
         required: false
       DOCKERHUB_TOKEN:
         required: false
+    outputs:
+      version:
+        description: 'Generated version tag (YYYY-MM-DD.commit-sha)'
+        value: ${{ jobs.kaniko-build.outputs.version }}
 
 jobs:
   kaniko-build:
@@ -130,6 +134,7 @@ jobs:
         run: |
           VERSION="$(date '+%Y-%m-%d').${GITHUB_SHA::8}"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "$VERSION" > version.txt
           echo "Generated version: $VERSION"
 

@@ -94,8 +94,6 @@ jobs:
         run: |
           if [ -n "${{ inputs.image_tag }}" ]; then
             VERSION="${{ inputs.image_tag }}"
-          else
-            VERSION="$(date '+%Y-%m-%d').${GITHUB_SHA::8}"
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
