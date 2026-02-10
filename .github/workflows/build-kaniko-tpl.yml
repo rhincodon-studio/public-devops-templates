@@ -107,6 +107,8 @@ on:
 jobs:
   kaniko-build:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       # --- 1️⃣ 檢出程式碼（在 Runner 主機執行） ---
