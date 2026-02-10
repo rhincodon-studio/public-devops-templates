@@ -46,6 +46,7 @@
 #   - dockerfile_path: Dockerfile 相對路徑（必填）
 #   - registry: 目標 registry（選填，預設：dockerhub，可選：dockerhub / ghcr）
 #   - cache: 是否啟用 layer cache（選填，預設：true）
+#   - cache_repository: 自訂 cache repo 路徑（選填，預設自動產生）
 #   - runs_on: Runner 類型（選填，預設：["self-hosted", "linux"]）
 #
 # 🔐 必要 Secrets：
@@ -89,6 +90,11 @@ on:
         required: false
         type: boolean
         default: true
+      cache_repository:
+        description: 'Remote cache repository path (default: auto-generated from container_repository)'
+        required: false
+        type: string
+        default: ''
       runs_on:
         description: 'Runner type'
         required: false
@@ -157,9 +163,25 @@ jobs:
             echo "REGISTRY_URL=docker.io" >> $GITHUB_ENV
           fi
 
+      # --- 4️⃣.5 計算 Cache Repository ---
+      - name: Set Cache Repository
+        if: inputs.cache
+        run: |
+          if [ -n "${{ inputs.cache_repository }}" ]; then
+            echo "CACHE_REPO=${{ inputs.cache_repository }}" >> $GITHUB_ENV
+          else
+            echo "CACHE_REPO=${REGISTRY_URL}/${{ inputs.container_repository }}/cache" >> $GITHUB_ENV
+          fi
+          echo "Cache repository: ${CACHE_REPO:-disabled}"
+
       # --- 5️⃣ 在 Runner 主機上手動 docker run Kaniko ---
       - name: Build and Push with Kaniko
         run: |
+          CACHE_ARGS=""
+          if [ "${{ inputs.cache }}" == "true" ]; then
+            CACHE_ARGS="--cache=true --cache-repo=${CACHE_REPO}"
+          fi
+
           docker run \
             -v $(pwd)/${{ inputs.working_directory }}:/workspace \
             -v $HOME/.docker:/kaniko/.docker:ro \
@@ -167,7 +189,7 @@ jobs:
             --context /workspace \
             --dockerfile /workspace/${{ inputs.dockerfile_path }} \
             --destination ${REGISTRY_URL}/${{ inputs.container_repository }}:${VERSION} \
-            --cache=${{ inputs.cache }} \
+            ${CACHE_ARGS} \
             --image-fs-extract-retry 5
 
       # --- 6️⃣ 輸出版本號 ---
