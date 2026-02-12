@@ -93,12 +93,16 @@ on:
       changed:
         description: 'Whether changes were committed'
         value: ${{ jobs.update-tag.outputs.changed }}
+      commit_sha:
+        description: 'The commit SHA after the tag update (latest main HEAD)'
+        value: ${{ jobs.update-tag.outputs.commit_sha }}
 
 jobs:
   update-tag:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
     outputs:
       changed: ${{ steps.commit.outputs.changed }}
+      commit_sha: ${{ steps.commit.outputs.commit_sha }}
 
     steps:
       - name: Checkout
@@ -171,6 +175,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
             echo "changed=false" >> $GITHUB_OUTPUT
+            echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
           else
             git commit -m "chore(${{ inputs.app }}): update image tag to ${{ inputs.image_tag }}
 
@@ -178,4 +183,5 @@ jobs:
           Commit: ${{ inputs.commit_sha }}"
             git push
             echo "changed=true" >> $GITHUB_OUTPUT
+            echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
           fi
