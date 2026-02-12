@@ -1,0 +1,302 @@
+# ============================================================================
+# CI Failure Issue Template
+# ============================================================================
+#
+# 📋 功能說明：
+#   - CI workflow 失敗時，自動在指定的 project repo 建立 issue
+#   - 附上失敗 job 的 log（最後 80 行）
+#   - 內建 de-duplicate：同標題 open issue 只加 comment，不重複建立
+#   - Anti-loop：跳過 cicada bot 的 commit，避免無限迴圈
+#
+# 🔧 使用方式：
+#   jobs:
+#     build:
+#       # ... build job ...
+#
+#     notify-cicada:
+#       needs: [build]
+#       if: failure()
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/ci-failure-issue-tpl.yml@v1
+#       with:
+#         repo: ${{ github.repository }}
+#         branch: ${{ github.head_ref || github.ref_name }}
+#         pr_number: ${{ github.event.pull_request.number || '0' }}
+#         ci_run_id: ${{ github.run_id }}
+#         failure_type: build
+#         app_path: apps/my-app
+#         layer: FE
+#         issue_repo: myorg/my-project-repo
+#       secrets:
+#         ISSUE_REPO_TOKEN: ${{ secrets.CICADA_GITHUB_TOKEN }}
+#
+# 📦 輸入參數：
+#   - repo: 來源 repo（必填）
+#   - branch: 分支名稱（必填）
+#   - pr_number: PR 號碼，非 PR 填 "0"（選填）
+#   - ci_run_id: GitHub Actions run ID（必填）
+#   - failure_type: 失敗類型 lint / test / build（必填）
+#   - app_path: monorepo 中的 app 路徑（選填）
+#   - layer: BE 或 FE（選填）
+#   - issue_repo: 建 issue 的目標 repo（必填）
+#   - commit_author: 最後 commit 作者（選填，anti-loop 用）
+#   - commit_message: 最後 commit 訊息（選填，anti-loop 用）
+#
+# 🔐 必要 Secrets：
+#   - ISSUE_REPO_TOKEN: 有 issues:write 權限的 GitHub PAT
+#
+# ============================================================================
+
+name: 🐛 CI Failure Issue (Template)
+
+on:
+  workflow_call:
+    inputs:
+      repo:
+        description: 'Source repository (owner/repo)'
+        required: true
+        type: string
+      branch:
+        description: 'Branch name'
+        required: true
+        type: string
+      pr_number:
+        description: 'Pull request number (0 if not a PR)'
+        required: false
+        type: string
+        default: '0'
+      ci_run_id:
+        description: 'GitHub Actions run ID'
+        required: true
+        type: string
+      failure_type:
+        description: 'CI failure type: lint, test, or build'
+        required: true
+        type: string
+      app_path:
+        description: 'App path in monorepo'
+        required: false
+        type: string
+        default: ''
+      layer:
+        description: 'Layer: BE or FE'
+        required: false
+        type: string
+        default: ''
+      issue_repo:
+        description: 'Target repo for issue creation (owner/repo)'
+        required: true
+        type: string
+      commit_author:
+        description: 'Last commit author name (for anti-loop check)'
+        required: false
+        type: string
+        default: ''
+      commit_message:
+        description: 'Last commit message (for anti-loop check)'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      ISSUE_REPO_TOKEN:
+        description: 'GitHub PAT with issues:write scope on the target repo'
+        required: true
+
+jobs:
+  create-issue:
+    name: Create CI Failure Issue
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Anti-loop check ──
+      - name: Anti-loop check
+        id: check
+        run: |
+          AUTHOR="${{ inputs.commit_author }}"
+          MESSAGE="${{ inputs.commit_message }}"
+
+          if [ "$AUTHOR" = "cicada-developer[bot]" ]; then
+            echo "::notice::Skipping: commit by cicada bot"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if echo "$MESSAGE" | grep -qF "[cicada-ci-fix]"; then
+            echo "::notice::Skipping: [cicada-ci-fix] marker in commit"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if echo "$MESSAGE" | grep -qF "[cicada-cd-fix]"; then
+            echo "::notice::Skipping: [cicada-cd-fix] marker in commit"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      # ── Fetch failed job logs ──
+      - name: Fetch CI logs
+        if: steps.check.outputs.skip == 'false'
+        id: logs
+        env:
+          GH_TOKEN: ${{ secrets.ISSUE_REPO_TOKEN }}
+        run: |
+          REPO="${{ inputs.repo }}"
+          RUN_ID="${{ inputs.ci_run_id }}"
+
+          echo "Fetching failed jobs for run $RUN_ID..."
+
+          # Get failed job IDs
+          FAILED_JOBS=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" \
+            --jq '.jobs[] | select(.conclusion == "failure") | .id' 2>/dev/null || echo "")
+
+          LOG_TEXT=""
+          for JOB_ID in $FAILED_JOBS; do
+            JOB_NAME=$(gh api "repos/${REPO}/actions/jobs/${JOB_ID}" \
+              --jq '.name' 2>/dev/null || echo "unknown")
+            JOB_LOG=$(gh api "repos/${REPO}/actions/jobs/${JOB_ID}/logs" 2>/dev/null | tail -80 || echo "(failed to fetch logs)")
+            LOG_TEXT="${LOG_TEXT}
+          === Job: ${JOB_NAME} (last 80 lines) ===
+          ${JOB_LOG}"
+          done
+
+          if [ -z "$LOG_TEXT" ]; then
+            LOG_TEXT="(no failed job logs available)"
+          fi
+
+          # Write to file to avoid shell escaping issues
+          echo "$LOG_TEXT" > /tmp/ci-logs.txt
+          echo "fetched=true" >> "$GITHUB_OUTPUT"
+
+      # ── Build issue title and body ──
+      - name: Create or update issue
+        if: steps.check.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.ISSUE_REPO_TOKEN }}
+        run: |
+          REPO="${{ inputs.repo }}"
+          BRANCH="${{ inputs.branch }}"
+          PR_NUMBER="${{ inputs.pr_number }}"
+          RUN_ID="${{ inputs.ci_run_id }}"
+          FAILURE_TYPE="${{ inputs.failure_type }}"
+          APP_PATH="${{ inputs.app_path }}"
+          LAYER="${{ inputs.layer }}"
+          ISSUE_REPO="${{ inputs.issue_repo }}"
+
+          # Build display name
+          DISPLAY_NAME="${APP_PATH:-$REPO}"
+
+          # Build issue title
+          ISSUE_TITLE="[CI Fix] ${DISPLAY_NAME}: ${FAILURE_TYPE} failure on ${BRANCH}"
+          if [ ${#ISSUE_TITLE} -gt 256 ]; then
+            ISSUE_TITLE=$(echo "$ISSUE_TITLE" | cut -c1-253)...
+          fi
+
+          # Build PR link
+          PR_LINK="N/A"
+          if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "0" ]; then
+            PR_LINK="[#${PR_NUMBER}](https://github.com/${REPO}/pull/${PR_NUMBER})"
+          fi
+
+          # Build CI run link
+          CI_LINK="[#${RUN_ID}](https://github.com/${REPO}/actions/runs/${RUN_ID})"
+
+          # Read logs
+          LOGS_CONTENT=""
+          if [ -f /tmp/ci-logs.txt ]; then
+            LOGS_CONTENT=$(cat /tmp/ci-logs.txt)
+          fi
+
+          # Build issue body
+          ISSUE_BODY="## CI Failure: ${DISPLAY_NAME}
+
+          | Field | Value |
+          |-------|-------|
+          | Repo | \`${REPO}\` |
+          | Branch | \`${BRANCH}\` |
+          | PR | ${PR_LINK} |
+          | Failure Type | \`${FAILURE_TYPE}\` |
+          | App Path | \`${APP_PATH}\` |
+          | Layer | \`${LAYER}\` |
+          | CI Run | ${CI_LINK} |
+
+          <details>
+          <summary>Error Logs</summary>
+
+          \`\`\`
+          ${LOGS_CONTENT}
+          \`\`\`
+
+          </details>"
+
+          # Determine labels
+          LAYER_LABEL=""
+          case "$LAYER" in
+            BE) LAYER_LABEL="backend" ;;
+            FE) LAYER_LABEL="frontend" ;;
+          esac
+
+          # Ensure labels exist
+          gh label create "cicada-ci-fix" --description "CICADA CI fix auto-created issue" --color "D93F0B" -R "$ISSUE_REPO" 2>/dev/null || true
+          gh label create "bug" --color "d73a4a" -R "$ISSUE_REPO" 2>/dev/null || true
+          if [ -n "$LAYER_LABEL" ]; then
+            gh label create "$LAYER_LABEL" --color "e4e669" -R "$ISSUE_REPO" 2>/dev/null || true
+          fi
+
+          # De-duplicate: check for existing open issue with same title prefix
+          SEARCH_KEY="[CI Fix] ${DISPLAY_NAME}: ${FAILURE_TYPE}"
+          EXISTING=$(gh issue list -R "$ISSUE_REPO" \
+            --label "cicada-ci-fix" \
+            --state open \
+            --search "in:title ${SEARCH_KEY}" \
+            --json number -q '.[0].number' 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING" ]; then
+            echo "Issue #$EXISTING already exists — adding comment"
+            COMMENT="Recurring CI failure on branch \`${BRANCH}\`
+
+          **CI Run:** ${CI_LINK}
+          **PR:** ${PR_LINK}
+
+          <details>
+          <summary>Error Logs</summary>
+
+          \`\`\`
+          ${LOGS_CONTENT}
+          \`\`\`
+
+          </details>"
+
+            gh issue comment "$EXISTING" -R "$ISSUE_REPO" --body "$COMMENT" 2>/dev/null || echo "::warning::Failed to comment on #$EXISTING"
+            echo "::notice::Commented on existing issue #$EXISTING"
+          else
+            echo "Creating new issue: $ISSUE_TITLE"
+            LABELS="bug,cicada-ci-fix"
+            if [ -n "$LAYER_LABEL" ]; then
+              LABELS="${LABELS},${LAYER_LABEL}"
+            fi
+
+            ISSUE_URL=$(gh issue create \
+              -R "$ISSUE_REPO" \
+              --title "$ISSUE_TITLE" \
+              --body "$ISSUE_BODY" \
+              --label "$LABELS" 2>&1) || {
+              echo "::error::Failed to create issue: $ISSUE_URL"
+              exit 1
+            }
+            echo "::notice::Issue created: $ISSUE_URL"
+          fi
+
+      # ── Summary ──
+      - name: Summary
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          echo "## CI Failure Issue" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Source Repo | \`${{ inputs.repo }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Issue Repo | \`${{ inputs.issue_repo }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`${{ inputs.branch }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Failure Type | \`${{ inputs.failure_type }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| CI Run | \`${{ inputs.ci_run_id }}\` |" >> $GITHUB_STEP_SUMMARY
