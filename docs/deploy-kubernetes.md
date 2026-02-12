@@ -6,15 +6,19 @@
 
 ```
 rs-apps (CI)                              rs-manifest (CD)
-┌──────────────────┐                      ┌─────────────────────────┐
-│ build-image      │                      │ update-tag              │
-│ (Kaniko)         │                      │   - 更新 values.yaml    │
-│       ↓          │                      │   - commit & push       │
-│ trigger-deploy   │ ──repository_────→   │       ↓                 │
-│                  │    dispatch          │ deploy                  │
-└──────────────────┘                      │   - 偵測變更 chart      │
-                                          │   - helm upgrade        │
-                                          └─────────────────────────┘
+┌──────────────────┐                      ┌──────────────────────────────┐
+│ build-image      │                      │ update-tag                   │
+│ (Kaniko)         │                      │   - 更新 values.yaml         │
+│       ↓          │                      │   - commit & push            │
+│ trigger-deploy   │ ──repository_────→   │   - output: commit_sha       │
+│                  │    dispatch          │       ↓ (ref=commit_sha)     │
+└──────────────────┘                      │ deploy                       │
+                                          │   - checkout 最新 main HEAD  │
+                                          │   - helm upgrade             │
+                                          │       ↓                      │
+                                          │ health-check                 │
+                                          │   - kubectl rollout status   │
+                                          └──────────────────────────────┘
 ```
 
 ## 觸發方式
@@ -107,6 +111,7 @@ update-tag:
 | 輸出 | 說明 |
 |------|------|
 | `changed` | 是否有變更 (true/false) |
+| `commit_sha` | tag 更新後的 commit SHA（可傳給 deploy job 的 `ref`） |
 
 ---
 
@@ -140,10 +145,16 @@ deploy:
 | `base_sha` | 否 | `HEAD~1` | 比較的基準 commit SHA |
 | `head_sha` | 否 | `HEAD` | 比較的目標 commit SHA |
 | `charts` | 否 | - | 手動指定 chart 路徑（空格分隔） |
-| `deploy_path_pattern` | 否 | `deploy/*/helm/**` | deploy 路徑模式 |
-| `kubeconfig_dir` | 否 | `$HOME/.kube` | kubeconfig 目錄 |
+| `ref` | 否 | default branch | 要 checkout 的 Git ref（見下方說明） |
+| `k8s_deploy_image` | 否 | `ghcr.io/rhincodon-studio/k8s-deploy:...` | k8s-deploy 容器映像 |
+| `kubeconfig_dir` | 否 | `/home/user/.kube` | kubeconfig 目錄 |
 | `helm_timeout` | 否 | `5m` | Helm 部署超時時間 |
 | `runs_on` | 否 | `["self-hosted", "linux"]` | Runner 類型 |
+
+> **`ref` 參數說明：** 未指定時，checkout 會使用 repository 的 default branch 最新 HEAD，
+> 而非 `github.sha`。這避免了 `repository_dispatch` 觸發時 `github.sha` 指向
+> `update-tag` push 之前的舊 commit，導致部署到錯誤版本的問題。
+> 也可以傳入 `update-tag` 的 `commit_sha` output 來精確指定 checkout 的 commit。
 
 **必要設定：**
 
@@ -261,8 +272,13 @@ jobs:
     with:
       base_sha: ${{ github.event_name == 'push' && github.event.before || '' }}
       head_sha: ${{ github.event_name == 'push' && github.sha || '' }}
+      ref: ${{ needs.update-tag.outputs.commit_sha || '' }}
+      charts: ${{ github.event_name != 'push' && format('deploy/{0}/helm/{1}/{2}', ...) || '' }}
     secrets: inherit
 ```
+
+> **注意：** `ref` 傳入 `update-tag` 的 `commit_sha` output，確保 deploy job
+> checkout 的是包含新 image tag 的 commit，而非 `repository_dispatch` 觸發時的舊 `github.sha`。
 
 ---
 
