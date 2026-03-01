@@ -1,0 +1,128 @@
+# ============================================================================
+# CICADA CI Failure Callback (Reusable Workflow)
+# ============================================================================
+#
+# Add this to any repo's CI workflow to enable CICADA auto-fix:
+#
+#   notify-cicada:
+#     needs: [lint, test, build]
+#     if: failure()
+#     uses: rhincodon-studio/devops-templates/.github/workflows/cicada-ci-fix-tpl.yml@main
+#     with:
+#       repo: ${{ github.repository }}
+#       branch: ${{ github.head_ref || github.ref_name }}
+#       pr-number: ${{ github.event.pull_request.number || '0' }}
+#       ci-run-id: ${{ github.run_id }}
+#       failure-type: "test"
+#       commit-author: ${{ github.event.head_commit.author.name || '' }}
+#       commit-message: ${{ github.event.head_commit.message || '' }}
+#     secrets:
+#       dispatch-token: ${{ secrets.CICADA_DISPATCH_TOKEN }}
+#
+# ============================================================================
+
+name: CICADA CI Failure Callback
+
+on:
+  workflow_call:
+    inputs:
+      repo:
+        description: "GitHub repository (owner/repo)"
+        required: true
+        type: string
+      branch:
+        description: "Branch name (PR head or push branch)"
+        required: true
+        type: string
+      pr-number:
+        description: "Pull request number (0 if not a PR)"
+        required: false
+        type: string
+        default: "0"
+      ci-run-id:
+        description: "GitHub Actions run ID"
+        required: true
+        type: string
+      failure-type:
+        description: "CI failure type: lint, test, or build"
+        required: true
+        type: string
+      ci-job-name:
+        description: "Specific CI job name that failed"
+        required: false
+        type: string
+        default: ""
+      commit-author:
+        description: "Last commit author name (for anti-loop check)"
+        required: false
+        type: string
+        default: ""
+      commit-message:
+        description: "Last commit message (for anti-loop check)"
+        required: false
+        type: string
+        default: ""
+      app-path:
+        description: "App path in monorepo"
+        required: false
+        type: string
+        default: ""
+      layer:
+        description: "Layer: BE or FE"
+        required: false
+        type: string
+        default: "BE"
+    secrets:
+      dispatch-token:
+        description: "Token with repo scope for repository_dispatch"
+        required: true
+
+jobs:
+  dispatch-ci-fix:
+    name: Dispatch CICADA CI Fix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Anti-loop check
+        id: check
+        run: |
+          AUTHOR="${{ inputs.commit-author }}"
+          MESSAGE="${{ inputs.commit-message }}"
+
+          if [ "$AUTHOR" = "cicada-developer[bot]" ]; then
+            echo "::notice::Skipping CICADA dispatch: commit by bot"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if echo "$MESSAGE" | grep -qF "[cicada-ci-fix]"; then
+            echo "::notice::Skipping CICADA dispatch: fix marker in commit"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if echo "$MESSAGE" | grep -qF "[cicada-cd-fix]"; then
+            echo "::notice::Skipping CICADA dispatch: fix marker in commit"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch to CICADA
+        if: steps.check.outputs.skip == 'false'
+        uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0  # v3
+        with:
+          token: ${{ secrets.dispatch-token }}
+          repository: rhincodon-studio/rs-cicada
+          event-type: cicada-ci-fix
+          client-payload: >-
+            {
+              "repo": "${{ inputs.repo }}",
+              "branch": "${{ inputs.branch }}",
+              "pr-number": "${{ inputs.pr-number }}",
+              "ci-run-id": "${{ inputs.ci-run-id }}",
+              "failure-type": "${{ inputs.failure-type }}",
+              "ci-job-name": "${{ inputs.ci-job-name }}",
+              "app-path": "${{ inputs.app-path }}",
+              "layer": "${{ inputs.layer }}"
+            }
