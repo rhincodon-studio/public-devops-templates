@@ -100,6 +100,11 @@ on:
         required: false
         type: string
         default: '["self-hosted", "linux"]'
+      version:
+        description: 'Override version tag (e.g. v1.2.3); if empty, auto-generates date.commit'
+        required: false
+        type: string
+        default: ''
     secrets:
       DOCKERHUB_USERNAME:
         required: false
@@ -136,11 +141,15 @@ jobs:
           echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n ${{ github.actor }}:${{ github.token }} | base64)"'"}}}' > ${HOME}/.docker/config.json
           cat ${HOME}/.docker/config.json
 
-      # --- 3️⃣ 計算版本號 (日期+commit) ---
+      # --- 3️⃣ 計算版本號 (tag 優先，否則日期+commit) ---
       - name: Generate Version Tag
         id: version
         run: |
-          VERSION="$(date '+%Y-%m-%d').${GITHUB_SHA::8}"
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="$(date '+%Y-%m-%d').${GITHUB_SHA::8}"
+          fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "$VERSION" > version.txt
