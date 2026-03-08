@@ -17,6 +17,7 @@
 #       secrets:
 #         CX_APIKEY: ${{ secrets.CX_APIKEY }}
 #         CX_TENANT: ${{ secrets.CX_TENANT }}
+#         CX_BASE_URI: ${{ secrets.CX_BASE_URI }}
 #
 # 📦 輸入參數：
 #   - project-name: Checkmarx 專案名稱（必填）
@@ -27,6 +28,7 @@
 # 🔐 必要 Secrets：
 #   - CX_APIKEY: Checkmarx API 金鑰
 #   - CX_TENANT: Checkmarx 租戶名稱
+#   - CX_BASE_URI: Checkmarx AST 基礎 URL（例如 https://ast.checkmarx.net）
 #
 # ============================================================================
 
@@ -52,6 +54,11 @@ on:
         type: string
         default: ""
 
+      checkmarx_image:
+        description: 'Checkmarx AST CLI Docker image'
+        required: false
+        type: string
+        default: 'checkmarx/ast-cli:latest'
       runs_on:
         description: 'Runner type'
         required: false
@@ -82,10 +89,10 @@ jobs:
 
           docker run --rm \
             -e CX_APIKEY="${{ secrets.CX_APIKEY }}" \
-            -e CX_BASE_URI="https://ast.checkmarx.net" \
+            -e CX_BASE_URI="${{ secrets.CX_BASE_URI }}" \
             -e CX_TENANT="${{ secrets.CX_TENANT }}" \
             -v "${GITHUB_WORKSPACE}:/app" \
-            rhincodonstudio/checkmarx-ast-cli:latest \
+            ${{ inputs.checkmarx_image }} \
               cx scan create \
                 --project-name "${{ inputs['project-name'] }}" \
                 --branch "${{ steps.set_branch.outputs.branch }}" \

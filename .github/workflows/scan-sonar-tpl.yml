@@ -91,12 +91,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Debug secret
-        run: |
-          echo "SONAR_TOKEN length: ${#SONAR_TOKEN}"
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
       # ===============================================================
       #  Cloud 模式（SonarCloud）
       # ===============================================================

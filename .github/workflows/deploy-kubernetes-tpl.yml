@@ -23,7 +23,7 @@
 #     deploy:
 #       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
 #       with:
-#         charts: "deploy/my-app/helm/RKE2-TWTPH-LAB/my-app"
+#         charts: "deploy/my-app/helm/MY-CLUSTER/my-app"
 #       secrets: inherit
 #
 # 📦 輸入參數：
@@ -38,7 +38,7 @@
 #
 # 🔐 必要 Secrets：
 #   - KUBECONFIG_<CLUSTER_NAME>: Base64 編碼的 kubeconfig 內容
-#     例如：KUBECONFIG_RKE2_TWTPH_LAB（注意：cluster 名稱中的 - 需改為 _）
+#     例如：KUBECONFIG_MY_CLUSTER（注意：cluster 名稱中的 - 需改為 _）
 #   - 產生方式：cat ~/.kube/config | base64 -w 0
 #
 # ============================================================================
@@ -69,15 +69,14 @@ on:
         type: string
         default: ''
       k8s_deploy_image:
-        description: 'k8s-deploy container image'
-        required: false
+        description: 'k8s-deploy container image (e.g. ghcr.io/myorg/k8s-deploy:latest)'
+        required: true
         type: string
-        default: 'ghcr.io/rhincodon-studio/k8s-deploy:2026-01-20.227818a7'
       kubeconfig_dir:
         description: 'Directory containing kubeconfig files on runner'
         required: false
         type: string
-        default: '/home/user/.kube'
+        default: '$HOME/.kube'
       helm_timeout:
         description: 'Helm deployment timeout'
         required: false
@@ -95,8 +94,8 @@ on:
         default: ''
 
     secrets:
-      KUBECONFIG_RKE2_TWTPH_LAB:
-        description: 'Base64 encoded kubeconfig for RKE2-TWTPH-LAB cluster'
+      KUBECONFIG_SECRET:
+        description: 'Base64 encoded kubeconfig for the target cluster. Callers map their own secret name here, e.g. secrets: { KUBECONFIG_SECRET: ${{ secrets.KUBECONFIG_MY_CLUSTER }} }'
         required: false
 
     outputs:
@@ -127,14 +126,14 @@ jobs:
         run: |
           mkdir -p $HOME/.kube-temp
 
-          # Write kubeconfig from secret (RKE2-TWTPH-LAB)
-          if [ -n "${{ secrets.KUBECONFIG_RKE2_TWTPH_LAB }}" ]; then
-            echo "${{ secrets.KUBECONFIG_RKE2_TWTPH_LAB }}" | base64 -d > $HOME/.kube-temp/RKE2-TWTPH-LAB
-            echo "✅ Loaded kubeconfig for RKE2-TWTPH-LAB"
+          CLUSTER_NAME="${{ inputs.cluster }}"
+          if [ -n "${{ secrets.KUBECONFIG_SECRET }}" ]; then
+            echo "${{ secrets.KUBECONFIG_SECRET }}" | base64 -d > "$HOME/.kube-temp/${CLUSTER_NAME:-default}"
+            echo "Loaded kubeconfig for ${CLUSTER_NAME:-default}"
           fi
 
           # List available kubeconfigs
-          echo "📂 Available kubeconfigs:"
+          echo "Available kubeconfigs:"
           ls -la $HOME/.kube-temp/ || echo "No kubeconfigs found"
 
           echo "kubeconfig_dir=$HOME/.kube-temp" >> $GITHUB_OUTPUT

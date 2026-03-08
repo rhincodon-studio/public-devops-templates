@@ -17,7 +17,7 @@
 #       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-trigger-deploy-tpl.yml@main
 #       with:
 #         app: "my-app"
-#         cluster: "RKE2-TWTPH-LAB"
+#         cluster: "MY-CLUSTER"
 #         namespace: "my-app"
 #         manifest_repo: "myorg/manifest-repo"
 #       secrets:
