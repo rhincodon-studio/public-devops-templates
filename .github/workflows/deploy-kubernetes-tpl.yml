@@ -94,8 +94,8 @@ on:
         default: ''
 
     secrets:
-      KUBECONFIG:
-        description: 'Base64 encoded kubeconfig for the target cluster'
+      KUBECONFIG_SECRET:
+        description: 'Base64 encoded kubeconfig for the target cluster. Callers map their own secret name here, e.g. secrets: { KUBECONFIG_SECRET: ${{ secrets.KUBECONFIG_MY_CLUSTER }} }'
         required: false
 
     outputs:
@@ -127,8 +127,8 @@ jobs:
           mkdir -p $HOME/.kube-temp
 
           CLUSTER_NAME="${{ inputs.cluster }}"
-          if [ -n "${{ secrets.KUBECONFIG }}" ]; then
-            echo "${{ secrets.KUBECONFIG }}" | base64 -d > "$HOME/.kube-temp/${CLUSTER_NAME:-default}"
+          if [ -n "${{ secrets.KUBECONFIG_SECRET }}" ]; then
+            echo "${{ secrets.KUBECONFIG_SECRET }}" | base64 -d > "$HOME/.kube-temp/${CLUSTER_NAME:-default}"
             echo "Loaded kubeconfig for ${CLUSTER_NAME:-default}"
           fi
 
