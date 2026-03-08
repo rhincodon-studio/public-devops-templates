@@ -7,7 +7,7 @@
 #   notify-cicada:
 #     needs: [lint, test, build]
 #     if: failure()
-#     uses: <your-org>/public-devops-templates/.github/workflows/cicada-ci-fix-tpl.yml@main
+#     uses: rhincodon-studio/public-devops-templates/.github/workflows/cicada-ci-fix-tpl.yml@main
 #     with:
 #       repo: ${{ github.repository }}
 #       branch: ${{ github.head_ref || github.ref_name }}

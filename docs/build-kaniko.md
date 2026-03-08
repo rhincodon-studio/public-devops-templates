@@ -16,7 +16,7 @@
 ```yaml
 jobs:
   build:
-    uses: <your-org>/public-devops-templates/.github/workflows/build-kaniko-tpl.yml@v1.3.0
+    uses: rhincodon-studio/public-devops-templates/.github/workflows/build-kaniko-tpl.yml@v1.3.0
     with:
       repository: "my-repo"
       container_repository: "myorg/my-service"
@@ -32,7 +32,7 @@ jobs:
 ```yaml
 jobs:
   build:
-    uses: <your-org>/public-devops-templates/.github/workflows/build-kaniko-tpl.yml@v1.3.0
+    uses: rhincodon-studio/public-devops-templates/.github/workflows/build-kaniko-tpl.yml@v1.3.0
     permissions:
       contents: read
       packages: write
@@ -106,7 +106,7 @@ on:
 
 jobs:
   build:
-    uses: <your-org>/public-devops-templates/.github/workflows/build-kaniko-tpl.yml@v1.3.0
+    uses: rhincodon-studio/public-devops-templates/.github/workflows/build-kaniko-tpl.yml@v1.3.0
     with:
       repository: "my-app"
       container_repository: "mycompany/my-app"
@@ -129,7 +129,7 @@ on:
 
 jobs:
   build:
-    uses: <your-org>/public-devops-templates/.github/workflows/build-kaniko-tpl.yml@v1.3.0
+    uses: rhincodon-studio/public-devops-templates/.github/workflows/build-kaniko-tpl.yml@v1.3.0
     permissions:
       contents: read
       packages: write

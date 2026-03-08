@@ -13,7 +13,7 @@
 #   📌 基本使用（部署到另一個 repository）：
 #   jobs:
 #     build:
-#       uses: <your-org>/public-devops-templates/.github/workflows/deploy-nx-static-github-pages-tpl.yml@v1.3.0
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-nx-static-github-pages-tpl.yml@v1.3.0
 #       with:
 #         project_name: "my-website"
 #         target_repository: "myorg/my-website-pages"
@@ -23,7 +23,7 @@
 #   📌 包含自訂網域：
 #   jobs:
 #     build:
-#       uses: <your-org>/public-devops-templates/.github/workflows/deploy-nx-static-github-pages-tpl.yml@v1.3.0
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-nx-static-github-pages-tpl.yml@v1.3.0
 #       with:
 #         project_name: "my-website"
 #         target_repository: "myorg/my-website-pages"
@@ -34,7 +34,7 @@
 #   📌 指定建置配置：
 #   jobs:
 #     build:
-#       uses: <your-org>/public-devops-templates/.github/workflows/deploy-nx-static-github-pages-tpl.yml@v1.3.0
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-nx-static-github-pages-tpl.yml@v1.3.0
 #       with:
 #         project_name: "my-website"
 #         target_repository: "myorg/my-website-pages"

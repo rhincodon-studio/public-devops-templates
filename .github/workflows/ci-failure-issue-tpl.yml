@@ -16,7 +16,7 @@
 #     notify-cicada:
 #       needs: [build]
 #       if: failure()
-#       uses: <your-org>/public-devops-templates/.github/workflows/ci-failure-issue-tpl.yml@v1
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/ci-failure-issue-tpl.yml@v1
 #       with:
 #         repo: ${{ github.repository }}
 #         branch: ${{ github.head_ref || github.ref_name }}

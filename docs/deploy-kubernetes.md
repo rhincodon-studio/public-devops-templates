@@ -41,7 +41,7 @@ rs-apps (CI)                              rs-manifest (CD)
 trigger-deploy:
   needs: build-image
   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  uses: <your-org>/public-devops-templates/.github/workflows/deploy-trigger-deploy-tpl.yml@main
+  uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-trigger-deploy-tpl.yml@main
   with:
     app: my-app
     cluster: MY-CLUSTER
@@ -78,7 +78,7 @@ trigger-deploy:
 
 ```yaml
 update-tag:
-  uses: <your-org>/public-devops-templates/.github/workflows/deploy-update-tag-kubernetes-tpl.yml@main
+  uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-update-tag-kubernetes-tpl.yml@main
   with:
     app: my-app
     cluster: MY-CLUSTER
@@ -124,7 +124,7 @@ update-tag:
 ```yaml
 # 自動偵測變更
 deploy:
-  uses: <your-org>/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+  uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
   with:
     base_sha: ${{ github.event.before }}
     head_sha: ${{ github.sha }}
@@ -132,7 +132,7 @@ deploy:
 
 # 手動指定 chart
 deploy:
-  uses: <your-org>/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+  uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
   with:
     charts: "deploy/my-app/helm/MY-CLUSTER/my-app"
   secrets: inherit
@@ -182,7 +182,7 @@ on:
 
 jobs:
   build-image:
-    uses: <your-org>/public-devops-templates/.github/workflows/build-kaniko-tpl.yml@main
+    uses: rhincodon-studio/public-devops-templates/.github/workflows/build-kaniko-tpl.yml@main
     permissions:
       contents: read
       packages: write
@@ -197,7 +197,7 @@ jobs:
   trigger-deploy:
     needs: build-image
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    uses: <your-org>/public-devops-templates/.github/workflows/deploy-trigger-deploy-tpl.yml@main
+    uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-trigger-deploy-tpl.yml@main
     with:
       app: my-app
       cluster: MY-CLUSTER
@@ -251,7 +251,7 @@ on:
 jobs:
   update-tag:
     if: github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch'
-    uses: <your-org>/public-devops-templates/.github/workflows/deploy-update-tag-kubernetes-tpl.yml@main
+    uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-update-tag-kubernetes-tpl.yml@main
     with:
       app: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.app || inputs.app }}
       cluster: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.cluster || inputs.cluster }}
@@ -268,7 +268,7 @@ jobs:
       always() &&
       (needs.update-tag.result == 'success' && needs.update-tag.outputs.changed == 'true') ||
       (github.event_name == 'push')
-    uses: <your-org>/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+    uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
     with:
       base_sha: ${{ github.event_name == 'push' && github.event.before || '' }}
       head_sha: ${{ github.event_name == 'push' && github.sha || '' }}

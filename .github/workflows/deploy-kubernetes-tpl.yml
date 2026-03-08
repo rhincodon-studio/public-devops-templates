@@ -12,7 +12,7 @@
 #   📌 自動偵測變更並部署：
 #   jobs:
 #     deploy:
-#       uses: <your-org>/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
 #       with:
 #         base_sha: ${{ github.event.before }}
 #         head_sha: ${{ github.sha }}
@@ -21,7 +21,7 @@
 #   📌 手動指定 chart 部署：
 #   jobs:
 #     deploy:
-#       uses: <your-org>/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
 #       with:
 #         charts: "deploy/my-app/helm/MY-CLUSTER/my-app"
 #       secrets: inherit
