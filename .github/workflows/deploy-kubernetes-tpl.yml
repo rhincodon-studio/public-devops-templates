@@ -95,7 +95,7 @@ on:
 
     secrets:
       KUBECONFIG_SECRET:
-        description: 'Base64 encoded kubeconfig for the target cluster. Callers map their own secret name here, e.g. secrets: { KUBECONFIG_SECRET: ${{ secrets.KUBECONFIG_MY_CLUSTER }} }'
+        description: 'Base64 encoded kubeconfig for the target cluster'
         required: false
 
     outputs:
