@@ -7,7 +7,7 @@
 #   notify-cicada:
 #     needs: [lint, test, build]
 #     if: failure()
-#     uses: rhincodon-studio/devops-templates/.github/workflows/cicada-ci-fix-tpl.yml@main
+#     uses: <your-org>/public-devops-templates/.github/workflows/cicada-ci-fix-tpl.yml@main
 #     with:
 #       repo: ${{ github.repository }}
 #       branch: ${{ github.head_ref || github.ref_name }}
@@ -72,6 +72,15 @@ on:
         required: false
         type: string
         default: "BE"
+      dispatch-repo:
+        description: "Target repository for dispatch (owner/repo)"
+        required: true
+        type: string
+      bot-name:
+        description: "Bot commit author name for anti-loop check"
+        required: false
+        type: string
+        default: "github-actions[bot]"
     secrets:
       dispatch-token:
         description: "Token with repo scope for repository_dispatch"
@@ -88,7 +97,7 @@ jobs:
           AUTHOR="${{ inputs.commit-author }}"
           MESSAGE="${{ inputs.commit-message }}"
 
-          if [ "$AUTHOR" = "cicada-developer[bot]" ]; then
+          if [ "$AUTHOR" = "${{ inputs.bot-name }}" ]; then
             echo "::notice::Skipping CICADA dispatch: commit by bot"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -113,7 +122,7 @@ jobs:
         uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0  # v3
         with:
           token: ${{ secrets.dispatch-token }}
-          repository: rhincodon-studio/rs-cicada
+          repository: ${{ inputs.dispatch-repo }}
           event-type: cicada-ci-fix
           client-payload: >-
             {

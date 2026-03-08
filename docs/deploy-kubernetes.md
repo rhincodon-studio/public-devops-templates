@@ -41,10 +41,10 @@ rs-apps (CI)                              rs-manifest (CD)
 trigger-deploy:
   needs: build-image
   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-  uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-trigger-deploy-tpl.yml@main
+  uses: <your-org>/public-devops-templates/.github/workflows/deploy-trigger-deploy-tpl.yml@main
   with:
     app: my-app
-    cluster: RKE2-TWTPH-LAB
+    cluster: MY-CLUSTER
     namespace: my-app
     manifest_repo: myorg/manifest-repo
   secrets:
@@ -78,10 +78,10 @@ trigger-deploy:
 
 ```yaml
 update-tag:
-  uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-update-tag-kubernetes-tpl.yml@main
+  uses: <your-org>/public-devops-templates/.github/workflows/deploy-update-tag-kubernetes-tpl.yml@main
   with:
     app: my-app
-    cluster: RKE2-TWTPH-LAB
+    cluster: MY-CLUSTER
     namespace: my-app
     image_tag: "2026-01-16.abc12345"
   secrets:
@@ -124,7 +124,7 @@ update-tag:
 ```yaml
 # 自動偵測變更
 deploy:
-  uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+  uses: <your-org>/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
   with:
     base_sha: ${{ github.event.before }}
     head_sha: ${{ github.sha }}
@@ -132,9 +132,9 @@ deploy:
 
 # 手動指定 chart
 deploy:
-  uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+  uses: <your-org>/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
   with:
-    charts: "deploy/my-app/helm/RKE2-TWTPH-LAB/my-app"
+    charts: "deploy/my-app/helm/MY-CLUSTER/my-app"
   secrets: inherit
 ```
 
@@ -146,8 +146,8 @@ deploy:
 | `head_sha` | 否 | `HEAD` | 比較的目標 commit SHA |
 | `charts` | 否 | - | 手動指定 chart 路徑（空格分隔） |
 | `ref` | 否 | default branch | 要 checkout 的 Git ref（見下方說明） |
-| `k8s_deploy_image` | 否 | `ghcr.io/rhincodon-studio/k8s-deploy:...` | k8s-deploy 容器映像 |
-| `kubeconfig_dir` | 否 | `/home/user/.kube` | kubeconfig 目錄 |
+| `k8s_deploy_image` | 是 | - | k8s-deploy 容器映像 |
+| `kubeconfig_dir` | 否 | `$HOME/.kube` | kubeconfig 目錄 |
 | `helm_timeout` | 否 | `5m` | Helm 部署超時時間 |
 | `runs_on` | 否 | `["self-hosted", "linux"]` | Runner 類型 |
 
@@ -182,7 +182,7 @@ on:
 
 jobs:
   build-image:
-    uses: rhincodon-studio/public-devops-templates/.github/workflows/build-kaniko-tpl.yml@main
+    uses: <your-org>/public-devops-templates/.github/workflows/build-kaniko-tpl.yml@main
     permissions:
       contents: read
       packages: write
@@ -197,10 +197,10 @@ jobs:
   trigger-deploy:
     needs: build-image
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-trigger-deploy-tpl.yml@main
+    uses: <your-org>/public-devops-templates/.github/workflows/deploy-trigger-deploy-tpl.yml@main
     with:
       app: my-app
-      cluster: RKE2-TWTPH-LAB
+      cluster: MY-CLUSTER
       namespace: my-app
       manifest_repo: myorg/manifest-repo
     secrets:
@@ -235,7 +235,7 @@ on:
         required: true
         type: choice
         options:
-          - RKE2-TWTPH-LAB
+          - MY-CLUSTER
       namespace:
         description: 'Kubernetes namespace'
         required: true
@@ -251,7 +251,7 @@ on:
 jobs:
   update-tag:
     if: github.event_name == 'repository_dispatch' || github.event_name == 'workflow_dispatch'
-    uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-update-tag-kubernetes-tpl.yml@main
+    uses: <your-org>/public-devops-templates/.github/workflows/deploy-update-tag-kubernetes-tpl.yml@main
     with:
       app: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.app || inputs.app }}
       cluster: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.cluster || inputs.cluster }}
@@ -268,7 +268,7 @@ jobs:
       always() &&
       (needs.update-tag.result == 'success' && needs.update-tag.outputs.changed == 'true') ||
       (github.event_name == 'push')
-    uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
+    uses: <your-org>/public-devops-templates/.github/workflows/deploy-kubernetes-tpl.yml@main
     with:
       base_sha: ${{ github.event_name == 'push' && github.event.before || '' }}
       head_sha: ${{ github.event_name == 'push' && github.sha || '' }}
@@ -292,7 +292,7 @@ manifest-repo/
 └── deploy/
     └── my-app/
         └── helm/
-            └── RKE2-TWTPH-LAB/
+            └── MY-CLUSTER/
                 └── my-app/
                     ├── Chart.yaml
                     ├── values.yaml

@@ -16,7 +16,7 @@
 #     notify-cicada:
 #       needs: [build]
 #       if: failure()
-#       uses: rhincodon-studio/public-devops-templates/.github/workflows/ci-failure-issue-tpl.yml@v1
+#       uses: <your-org>/public-devops-templates/.github/workflows/ci-failure-issue-tpl.yml@v1
 #       with:
 #         repo: ${{ github.repository }}
 #         branch: ${{ github.head_ref || github.ref_name }}
@@ -96,6 +96,11 @@ on:
         required: false
         type: string
         default: ''
+      bot_name:
+        description: 'Bot commit author name for anti-loop check'
+        required: false
+        type: string
+        default: 'github-actions[bot]'
     secrets:
       ISSUE_REPO_TOKEN:
         description: 'GitHub PAT with issues:write scope on the target repo'
@@ -114,7 +119,7 @@ jobs:
           AUTHOR="${{ inputs.commit_author }}"
           MESSAGE="${{ inputs.commit_message }}"
 
-          if [ "$AUTHOR" = "cicada-developer[bot]" ]; then
+          if [ "$AUTHOR" = "${{ inputs.bot_name }}" ]; then
             echo "::notice::Skipping: commit by cicada bot"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
