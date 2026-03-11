@@ -97,6 +97,9 @@ on:
       KUBECONFIG_SECRET:
         description: 'Base64 encoded kubeconfig for the target cluster'
         required: false
+      GHCR_TOKEN:
+        description: 'PAT with packages:read for pulling private GHCR images (optional, falls back to GITHUB_TOKEN)'
+        required: false
 
     outputs:
       deployed_charts:
