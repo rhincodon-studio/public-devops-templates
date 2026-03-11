@@ -119,7 +119,11 @@ jobs:
       - name: Login to GHCR
         if: contains(inputs.k8s_deploy_image, 'ghcr.io')
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          # Prefer GHCR_TOKEN (PAT with packages:read) over GITHUB_TOKEN
+          # GITHUB_TOKEN is scoped to the caller repo and cannot pull
+          # private packages from other repos in the same org.
+          TOKEN="${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}"
+          echo "$TOKEN" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Setup kubeconfig from secrets
         id: kubeconfig
