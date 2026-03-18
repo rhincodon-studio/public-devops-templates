@@ -189,7 +189,7 @@ jobs:
             CACHE_ARGS="--cache=true --cache-repo=${CACHE_REPO}"
           fi
 
-          docker run \
+          docker run --network=host \
             -v $(pwd)/${{ inputs.working_directory }}:/workspace \
             -v $HOME/.docker:/kaniko/.docker:ro \
             gcr.io/kaniko-project/executor:v1.23.0-debug \
