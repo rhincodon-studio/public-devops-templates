@@ -131,8 +131,10 @@ jobs:
       - name: Configure Docker Auth (DockerHub)
         if: inputs.registry == 'dockerhub'
         run: |
-          mkdir -p ${HOME}/.docker
-          echo '{"auths":{"https://index.docker.io/v1/":{"auth":"'"$(echo -n ${{ secrets.DOCKERHUB_USERNAME }}:${{ secrets.DOCKERHUB_TOKEN }} | base64)"'"}}}' > ${HOME}/.docker/config.json
+          DOCKER_CFG_DIR="${RUNNER_TEMP}/.docker"
+          mkdir -p "${DOCKER_CFG_DIR}"
+          echo '{"auths":{"https://index.docker.io/v1/":{"auth":"'"$(echo -n ${{ secrets.DOCKERHUB_USERNAME }}:${{ secrets.DOCKERHUB_TOKEN }} | base64)"'"}}}' > "${DOCKER_CFG_DIR}/config.json"
+          echo "DOCKER_CFG_DIR=${DOCKER_CFG_DIR}" >> $GITHUB_ENV
 
       # --- 2️⃣ 設定 Docker Auth（GitHub Container Registry） ---
       # Prefer GHCR_TOKEN (PAT with write:packages) over GITHUB_TOKEN,
@@ -142,8 +144,10 @@ jobs:
         env:
           GHCR_PASS: ${{ secrets.GHCR_TOKEN || github.token }}
         run: |
-          mkdir -p ${HOME}/.docker
-          echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n ${{ github.actor }}:${GHCR_PASS} | base64)"'"}}}' > ${HOME}/.docker/config.json
+          DOCKER_CFG_DIR="${RUNNER_TEMP}/.docker"
+          mkdir -p "${DOCKER_CFG_DIR}"
+          echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n ${{ github.actor }}:${GHCR_PASS} | base64)"'"}}}' > "${DOCKER_CFG_DIR}/config.json"
+          echo "DOCKER_CFG_DIR=${DOCKER_CFG_DIR}" >> $GITHUB_ENV
 
       # --- 3️⃣ 計算版本號 (tag 優先，否則日期+commit) ---
       - name: Generate Version Tag
@@ -197,7 +201,7 @@ jobs:
 
           docker run --network=host \
             -v $(pwd)/${{ inputs.working_directory }}:/workspace \
-            -v $HOME/.docker:/kaniko/.docker:ro \
+            -v ${DOCKER_CFG_DIR}:/kaniko/.docker:ro \
             gcr.io/kaniko-project/executor:v1.23.0-debug \
             --context /workspace \
             --dockerfile /workspace/${{ inputs.dockerfile_path }} \
