@@ -178,6 +178,7 @@ jobs:
           docker run --rm \
             -v $(pwd):/workspace \
             -v ${{ steps.kubeconfig.outputs.kubeconfig_dir }}:/root/.kube:ro \
+            $([ -f "$HOME/.docker/config.json" ] && echo "-v $HOME/.docker/config.json:/root/.docker/config.json:ro") \
             -e GIT_DISCOVERY_ACROSS_FILESYSTEM=1 \
             -e HELM_DEBUG=1 \
             -w /workspace \
