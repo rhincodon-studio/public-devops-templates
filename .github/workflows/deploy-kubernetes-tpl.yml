@@ -131,22 +131,20 @@ jobs:
       - name: Setup kubeconfig from secrets
         id: kubeconfig
         run: |
-          # Use GITHUB_WORKSPACE for kubeconfig so it's visible to dind containers
-          # (ARC runners use dind which can only see volumes mounted to the work dir)
-          KUBE_DIR="${GITHUB_WORKSPACE}/.kube-temp"
-          mkdir -p "$KUBE_DIR"
-
+          # Store kubeconfig as base64 to pass via environment variable
+          # This avoids volume mount issues on ARC runners with DinD
           CLUSTER_NAME="${{ inputs.cluster }}"
+
           if [ -n "${{ secrets.KUBECONFIG_SECRET }}" ]; then
-            echo "${{ secrets.KUBECONFIG_SECRET }}" | base64 -d > "$KUBE_DIR/${CLUSTER_NAME:-default}"
-            echo "Loaded kubeconfig for ${CLUSTER_NAME:-default}"
+            # Store the base64 content for later use
+            echo "kubeconfig_b64=${{ secrets.KUBECONFIG_SECRET }}" >> $GITHUB_OUTPUT
+            echo "cluster_name=${CLUSTER_NAME:-default}" >> $GITHUB_OUTPUT
+            echo "✅ Kubeconfig ready for ${CLUSTER_NAME:-default}"
+          else
+            echo "⚠️ No KUBECONFIG_SECRET provided"
+            echo "kubeconfig_b64=" >> $GITHUB_OUTPUT
+            echo "cluster_name=" >> $GITHUB_OUTPUT
           fi
-
-          # List available kubeconfigs
-          echo "Available kubeconfigs:"
-          ls -la "$KUBE_DIR" || echo "No kubeconfigs found"
-
-          echo "kubeconfig_dir=$KUBE_DIR" >> $GITHUB_OUTPUT
 
       - name: Deploy with k8s-deploy container
         id: deploy
@@ -191,17 +189,36 @@ jobs:
             DOCKER_ENV_ARGS="-e DOCKER_CONFIG=/workspace/.docker-config"
           fi
 
+          # Pass kubeconfig via environment variable to avoid volume mount issues on ARC runners
+          KUBECONFIG_B64="${{ steps.kubeconfig.outputs.kubeconfig_b64 }}"
+          CLUSTER_NAME="${{ steps.kubeconfig.outputs.cluster_name }}"
+
           docker run --rm \
             -v $(pwd):/workspace \
-            -v ${{ steps.kubeconfig.outputs.kubeconfig_dir }}:/root/.kube:ro \
             $DOCKER_MOUNT_ARGS \
             $DOCKER_ENV_ARGS \
             -e GIT_DISCOVERY_ACROSS_FILESYSTEM=1 \
             -e HELM_DEBUG=1 \
+            -e KUBECONFIG_B64="$KUBECONFIG_B64" \
+            -e CLUSTER_NAME="$CLUSTER_NAME" \
             -w /workspace \
             --entrypoint /bin/sh \
             ${{ inputs.k8s_deploy_image }} \
-            -c "echo '🔍 Debug info:' && helm version && echo '📂 Chart dependencies:' && ls -la /workspace/deploy/*/helm/*/*/charts/ 2>/dev/null || echo 'No charts dir found' && git config --global --add safe.directory /workspace && /k8s-deploy $ARGS"
+            -c '
+              # Setup kubeconfig from environment variable
+              mkdir -p /root/.kube
+              if [ -n "$KUBECONFIG_B64" ]; then
+                echo "$KUBECONFIG_B64" | base64 -d > /root/.kube/${CLUSTER_NAME:-config}
+                export KUBECONFIG=/root/.kube/${CLUSTER_NAME:-config}
+                echo "✅ Kubeconfig loaded for ${CLUSTER_NAME:-default}"
+              else
+                echo "⚠️ No kubeconfig provided"
+              fi
+              echo "🔍 Debug info:" && helm version
+              echo "📂 Chart dependencies:" && ls -la /workspace/deploy/*/helm/*/*/charts/ 2>/dev/null || echo "No charts dir found"
+              git config --global --add safe.directory /workspace
+              /k8s-deploy '"$ARGS"'
+            '
 
       - name: Summary
         if: always()
