@@ -131,19 +131,22 @@ jobs:
       - name: Setup kubeconfig from secrets
         id: kubeconfig
         run: |
-          mkdir -p $HOME/.kube-temp
+          # Use GITHUB_WORKSPACE for kubeconfig so it's visible to dind containers
+          # (ARC runners use dind which can only see volumes mounted to the work dir)
+          KUBE_DIR="${GITHUB_WORKSPACE}/.kube-temp"
+          mkdir -p "$KUBE_DIR"
 
           CLUSTER_NAME="${{ inputs.cluster }}"
           if [ -n "${{ secrets.KUBECONFIG_SECRET }}" ]; then
-            echo "${{ secrets.KUBECONFIG_SECRET }}" | base64 -d > "$HOME/.kube-temp/${CLUSTER_NAME:-default}"
+            echo "${{ secrets.KUBECONFIG_SECRET }}" | base64 -d > "$KUBE_DIR/${CLUSTER_NAME:-default}"
             echo "Loaded kubeconfig for ${CLUSTER_NAME:-default}"
           fi
 
           # List available kubeconfigs
           echo "Available kubeconfigs:"
-          ls -la $HOME/.kube-temp/ || echo "No kubeconfigs found"
+          ls -la "$KUBE_DIR" || echo "No kubeconfigs found"
 
-          echo "kubeconfig_dir=$HOME/.kube-temp" >> $GITHUB_OUTPUT
+          echo "kubeconfig_dir=$KUBE_DIR" >> $GITHUB_OUTPUT
 
       - name: Deploy with k8s-deploy container
         id: deploy
