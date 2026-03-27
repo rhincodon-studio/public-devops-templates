@@ -178,10 +178,16 @@ jobs:
           # Chart is copied to temp dir inside container, so workspace won't be modified
           # Note: workspace needs to be writable for git operations (git diff)
           # We need to configure git safe.directory inside the container before running k8s-deploy
+          # Check if docker config exists and is a valid file (not directory)
+          DOCKER_CONFIG_MOUNT=""
+          if [ -f "$HOME/.docker/config.json" ] && [ ! -d "$HOME/.docker/config.json" ] && head -c1 "$HOME/.docker/config.json" 2>/dev/null | grep -q '{'; then
+            DOCKER_CONFIG_MOUNT="-v $HOME/.docker/config.json:/root/.docker/config.json:ro"
+          fi
+
           docker run --rm \
             -v $(pwd):/workspace \
             -v ${{ steps.kubeconfig.outputs.kubeconfig_dir }}:/root/.kube:ro \
-            $([ -f "$HOME/.docker/config.json" ] && echo "-v $HOME/.docker/config.json:/root/.docker/config.json:ro") \
+            $DOCKER_CONFIG_MOUNT \
             -e GIT_DISCOVERY_ACROSS_FILESYSTEM=1 \
             -e HELM_DEBUG=1 \
             -w /workspace \
