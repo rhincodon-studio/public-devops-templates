@@ -205,6 +205,16 @@ jobs:
             --entrypoint /bin/sh \
             ${{ inputs.k8s_deploy_image }} \
             -c '
+              # Fix docker config if it exists as a directory (common in some images)
+              if [ -d /root/.docker/config.json ]; then
+                rm -rf /root/.docker/config.json
+              fi
+              # Ensure valid docker config exists
+              mkdir -p /root/.docker
+              if [ ! -f /root/.docker/config.json ]; then
+                echo "{}" > /root/.docker/config.json
+              fi
+
               # Setup kubeconfig from environment variable
               mkdir -p /root/.kube
               if [ -n "$KUBECONFIG_B64" ]; then
