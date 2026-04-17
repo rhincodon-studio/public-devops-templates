@@ -95,6 +95,11 @@ on:
         required: false
         type: string
         default: ''
+      nexus_registry:
+        description: 'Optional Nexus registry hostname to inject into kaniko Docker auth (e.g. registry.typus.studio)'
+        required: false
+        type: string
+        default: ''
       runs_on:
         description: 'Runner type'
         required: false
@@ -111,6 +116,10 @@ on:
       DOCKERHUB_TOKEN:
         required: false
       GHCR_TOKEN:
+        required: false
+      NEXUS_USERNAME:
+        required: false
+      NEXUS_PASSWORD:
         required: false
     outputs:
       version:
@@ -148,6 +157,29 @@ jobs:
           mkdir -p "${DOCKER_CFG_DIR}"
           echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n ${{ github.actor }}:${GHCR_PASS} | base64)"'"}}}' > "${DOCKER_CFG_DIR}/config.json"
           echo "DOCKER_CFG_DIR=${DOCKER_CFG_DIR}" >> $GITHUB_ENV
+
+      # --- 2️⃣.5 Inject Nexus registry auth into kaniko Docker config ---
+      - name: Configure Nexus Registry Auth
+        if: inputs.nexus_registry != ''
+        env:
+          NEXUS_REGISTRY: ${{ inputs.nexus_registry }}
+          NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        run: |
+          if [ -z "${NEXUS_USERNAME}" ] || [ -z "${NEXUS_PASSWORD}" ]; then
+            echo "::warning::NEXUS_USERNAME or NEXUS_PASSWORD not set; skipping Nexus auth injection"
+            exit 0
+          fi
+          NEXUS_AUTH=$(echo -n "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" | base64)
+          python3 - "${DOCKER_CFG_DIR}/config.json" "${NEXUS_REGISTRY}" "${NEXUS_AUTH}" <<'PYEOF'
+import sys, json
+path, registry, auth = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as f:
+    cfg = json.load(f)
+cfg.setdefault('auths', {})[registry] = {'auth': auth}
+with open(path, 'w') as f:
+    json.dump(cfg, f)
+PYEOF
 
       # --- 3️⃣ 計算版本號 (tag 優先，否則日期+commit) ---
       - name: Generate Version Tag
