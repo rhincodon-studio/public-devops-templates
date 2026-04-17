@@ -171,15 +171,10 @@ jobs:
             exit 0
           fi
           NEXUS_AUTH=$(echo -n "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" | base64)
-          python3 - "${DOCKER_CFG_DIR}/config.json" "${NEXUS_REGISTRY}" "${NEXUS_AUTH}" <<'PYEOF'
-import sys, json
-path, registry, auth = sys.argv[1], sys.argv[2], sys.argv[3]
-with open(path) as f:
-    cfg = json.load(f)
-cfg.setdefault('auths', {})[registry] = {'auth': auth}
-with open(path, 'w') as f:
-    json.dump(cfg, f)
-PYEOF
+          jq --arg r "${NEXUS_REGISTRY}" --arg a "${NEXUS_AUTH}" \
+             '.auths[$r] = {"auth": $a}' \
+             "${DOCKER_CFG_DIR}/config.json" > /tmp/_nexus_docker_cfg.json \
+          && mv /tmp/_nexus_docker_cfg.json "${DOCKER_CFG_DIR}/config.json"
 
       # --- 3️⃣ 計算版本號 (tag 優先，否則日期+commit) ---
       - name: Generate Version Tag
