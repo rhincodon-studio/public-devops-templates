@@ -237,6 +237,7 @@ jobs:
             --context /workspace \
             --dockerfile /workspace/${{ inputs.dockerfile_path }} \
             --destination ${REGISTRY_URL}/${{ inputs.container_repository }}:${VERSION} \
+            --build-arg BUILD_COMMIT_SHA=${GITHUB_SHA::8} \
             ${CACHE_ARGS} \
             --image-fs-extract-retry 5
 

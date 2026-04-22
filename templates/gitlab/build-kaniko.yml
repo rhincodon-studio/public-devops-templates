@@ -96,6 +96,7 @@
         --context "${CI_PROJECT_DIR}/${WORKING_DIRECTORY}" \
         --dockerfile "${CI_PROJECT_DIR}/${WORKING_DIRECTORY}/${DOCKERFILE_PATH}" \
         --destination "${REGISTRY_URL}/${CONTAINER_REPOSITORY}:${BUILD_VERSION}" \
+        --build-arg BUILD_COMMIT_SHA=${CI_COMMIT_SHA:0:8} \
         ${CACHE_ARGS} \
         --image-fs-extract-retry 5
 
