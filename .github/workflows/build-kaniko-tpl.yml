@@ -139,10 +139,14 @@ jobs:
       # --- 2️⃣ 設定 Docker Auth（DockerHub） ---
       - name: Configure Docker Auth (DockerHub)
         if: inputs.registry == 'dockerhub'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           DOCKER_CFG_DIR="${RUNNER_TEMP}/.docker"
           mkdir -p "${DOCKER_CFG_DIR}"
-          echo '{"auths":{"https://index.docker.io/v1/":{"auth":"'"$(echo -n ${{ secrets.DOCKERHUB_USERNAME }}:${{ secrets.DOCKERHUB_TOKEN }} | base64)"'"}}}' > "${DOCKER_CFG_DIR}/config.json"
+          AUTH=$(echo -n "${DOCKERHUB_USERNAME}:${DOCKERHUB_TOKEN}" | base64)
+          echo "{\"auths\":{\"https://index.docker.io/v1/\":{\"auth\":\"${AUTH}\"}}}" > "${DOCKER_CFG_DIR}/config.json"
           echo "DOCKER_CFG_DIR=${DOCKER_CFG_DIR}" >> $GITHUB_ENV
 
       # --- 2️⃣ 設定 Docker Auth（GitHub Container Registry） ---
