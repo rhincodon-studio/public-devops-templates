@@ -35,12 +35,12 @@
     CACHE_ENABLED: "true"
     VERSION: ""
   before_script:
-    # Generate version tag
+    # Generate version tag (8 chars to match GitHub Actions)
     - |
       if [ -n "${VERSION}" ]; then
         export BUILD_VERSION="${VERSION}"
       else
-        export BUILD_VERSION="$(date '+%Y-%m-%d').${CI_COMMIT_SHORT_SHA}"
+        export BUILD_VERSION="$(date '+%Y-%m-%d').${CI_COMMIT_SHA:0:8}"
       fi
       echo "BUILD_VERSION=${BUILD_VERSION}"
 
