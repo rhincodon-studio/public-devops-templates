@@ -239,5 +239,7 @@ jobs:
       # --- 6️⃣ 輸出版本號 ---
       - name: Export version
         run: |
-          echo "VERSION=${VERSION}" >> "${{ inputs.repository }}.env"
-          cat "${{ inputs.repository }}.env"
+          ENV_FILE="${{ inputs.repository }}.env"
+          mkdir -p "$(dirname "${ENV_FILE}")"
+          echo "VERSION=${VERSION}" >> "${ENV_FILE}"
+          cat "${ENV_FILE}"
