@@ -95,8 +95,8 @@ on:
         required: false
         type: string
         default: ''
-      nexus_registry:
-        description: 'Optional Nexus registry hostname to inject into kaniko Docker auth (e.g. registry.typus.studio)'
+      private_registry:
+        description: 'Optional private registry hostname (Harbor, jFrog, Nexus, etc.) to inject into kaniko Docker auth'
         required: false
         type: string
         default: ''
@@ -117,9 +117,9 @@ on:
         required: false
       GHCR_TOKEN:
         required: false
-      NEXUS_USERNAME:
+      PRIVATE_REGISTRY_USERNAME:
         required: false
-      NEXUS_PASSWORD:
+      PRIVATE_REGISTRY_PASSWORD:
         required: false
     outputs:
       version:
@@ -139,10 +139,14 @@ jobs:
       # --- 2️⃣ 設定 Docker Auth（DockerHub） ---
       - name: Configure Docker Auth (DockerHub)
         if: inputs.registry == 'dockerhub'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           DOCKER_CFG_DIR="${RUNNER_TEMP}/.docker"
           mkdir -p "${DOCKER_CFG_DIR}"
-          echo '{"auths":{"https://index.docker.io/v1/":{"auth":"'"$(echo -n ${{ secrets.DOCKERHUB_USERNAME }}:${{ secrets.DOCKERHUB_TOKEN }} | base64)"'"}}}' > "${DOCKER_CFG_DIR}/config.json"
+          AUTH=$(echo -n "${DOCKERHUB_USERNAME}:${DOCKERHUB_TOKEN}" | base64)
+          echo "{\"auths\":{\"https://index.docker.io/v1/\":{\"auth\":\"${AUTH}\"}}}" > "${DOCKER_CFG_DIR}/config.json"
           echo "DOCKER_CFG_DIR=${DOCKER_CFG_DIR}" >> $GITHUB_ENV
 
       # --- 2️⃣ 設定 Docker Auth（GitHub Container Registry） ---
@@ -158,23 +162,23 @@ jobs:
           echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n ${{ github.actor }}:${GHCR_PASS} | base64)"'"}}}' > "${DOCKER_CFG_DIR}/config.json"
           echo "DOCKER_CFG_DIR=${DOCKER_CFG_DIR}" >> $GITHUB_ENV
 
-      # --- 2️⃣.5 Inject Nexus registry auth into kaniko Docker config ---
-      - name: Configure Nexus Registry Auth
-        if: inputs.nexus_registry != ''
+      # --- 2️⃣.5 Inject private registry auth (Harbor, jFrog, Nexus, etc.) ---
+      - name: Configure Private Registry Auth
+        if: inputs.private_registry != ''
         env:
-          NEXUS_REGISTRY: ${{ inputs.nexus_registry }}
-          NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
-          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+          PRIVATE_REGISTRY: ${{ inputs.private_registry }}
+          PRIVATE_REGISTRY_USERNAME: ${{ secrets.PRIVATE_REGISTRY_USERNAME }}
+          PRIVATE_REGISTRY_PASSWORD: ${{ secrets.PRIVATE_REGISTRY_PASSWORD }}
         run: |
-          if [ -z "${NEXUS_USERNAME}" ] || [ -z "${NEXUS_PASSWORD}" ]; then
-            echo "::warning::NEXUS_USERNAME or NEXUS_PASSWORD not set; skipping Nexus auth injection"
+          if [ -z "${PRIVATE_REGISTRY_USERNAME}" ] || [ -z "${PRIVATE_REGISTRY_PASSWORD}" ]; then
+            echo "::warning::PRIVATE_REGISTRY_USERNAME or PRIVATE_REGISTRY_PASSWORD not set; skipping auth injection"
             exit 0
           fi
-          NEXUS_AUTH=$(echo -n "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" | base64)
-          jq --arg r "${NEXUS_REGISTRY}" --arg a "${NEXUS_AUTH}" \
+          REGISTRY_AUTH=$(echo -n "${PRIVATE_REGISTRY_USERNAME}:${PRIVATE_REGISTRY_PASSWORD}" | base64)
+          jq --arg r "${PRIVATE_REGISTRY}" --arg a "${REGISTRY_AUTH}" \
              '.auths[$r] = {"auth": $a}' \
-             "${DOCKER_CFG_DIR}/config.json" > /tmp/_nexus_docker_cfg.json \
-          && mv /tmp/_nexus_docker_cfg.json "${DOCKER_CFG_DIR}/config.json"
+             "${DOCKER_CFG_DIR}/config.json" > /tmp/_private_registry_cfg.json \
+          && mv /tmp/_private_registry_cfg.json "${DOCKER_CFG_DIR}/config.json"
 
       # --- 3️⃣ 計算版本號 (tag 優先，否則日期+commit) ---
       - name: Generate Version Tag
@@ -239,5 +243,7 @@ jobs:
       # --- 6️⃣ 輸出版本號 ---
       - name: Export version
         run: |
-          echo "VERSION=${VERSION}" >> "${{ inputs.repository }}.env"
-          cat "${{ inputs.repository }}.env"
+          ENV_FILE="${{ inputs.repository }}.env"
+          mkdir -p "$(dirname "${ENV_FILE}")"
+          echo "VERSION=${VERSION}" >> "${ENV_FILE}"
+          cat "${ENV_FILE}"
