@@ -92,6 +92,11 @@ on:
         required: false
         type: string
         default: ''
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        type: number
+        default: 3
 
     secrets:
       KUBECONFIG_SECRET:
@@ -109,6 +114,7 @@ on:
 jobs:
   deploy:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
     outputs:
       deployed_charts: ${{ steps.deploy.outputs.charts }}
 

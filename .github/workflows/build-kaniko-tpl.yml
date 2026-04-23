@@ -110,6 +110,11 @@ on:
         required: false
         type: string
         default: ''
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        type: number
+        default: 3
     secrets:
       DOCKERHUB_USERNAME:
         required: false
@@ -129,6 +134,7 @@ on:
 jobs:
   kaniko-build:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
     outputs:
       version: ${{ steps.version.outputs.version }}
 

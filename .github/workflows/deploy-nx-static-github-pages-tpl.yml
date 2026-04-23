@@ -119,6 +119,11 @@ on:
         required: false
         type: boolean
         default: false
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        type: number
+        default: 3
     secrets:
       DEPLOY_TOKEN:
         description: 'Personal Access Token with repo scope for target repository'
@@ -127,6 +132,7 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
 
     steps:
       # --- 1️⃣ 檢出程式碼 ---

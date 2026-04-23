@@ -81,6 +81,11 @@ on:
         required: false
         type: string
         default: "github-actions[bot]"
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        type: number
+        default: 3
     secrets:
       dispatch-token:
         description: "Token with repo scope for repository_dispatch"
@@ -90,6 +95,7 @@ jobs:
   dispatch-ci-fix:
     name: Dispatch CICADA CI Fix
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
     steps:
       - name: Anti-loop check
         id: check

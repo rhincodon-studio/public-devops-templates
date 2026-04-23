@@ -49,6 +49,11 @@ on:
         type: string
         required: false
         default: '"ubuntu-latest"'
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        type: number
+        default: 3
 
     secrets:
       SNYK_TOKEN:
@@ -58,6 +63,7 @@ jobs:
   deps-scan:
     name: Snyk Dependency Scan
     runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
 
     steps:
       - name: Checkout
@@ -78,6 +84,7 @@ jobs:
     name: Snyk Container Scan
     if: inputs.image-name != ''
     runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
 
     steps:
       - name: Install Snyk CLI

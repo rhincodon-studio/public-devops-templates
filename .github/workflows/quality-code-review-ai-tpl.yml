@@ -13,6 +13,11 @@ on:
         required: true
         type: string
         default: "openai"
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        type: number
+        default: 3
 
     secrets:
       OPENAI_API_KEY:
@@ -39,6 +44,7 @@ on:
 jobs:
   hybrid-review:
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
 
     steps:
       # -------------------------

@@ -69,10 +69,16 @@ on:
         required: false
         type: string
         default: 'ubuntu-latest'
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        type: number
+        default: 3
 
 jobs:
   nx-affected:
     runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
 
     steps:
       # --- 1️⃣ 檢出程式碼（需要完整 history 供 Nx 比較） ---

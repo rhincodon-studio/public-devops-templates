@@ -101,6 +101,11 @@ on:
         required: false
         type: string
         default: 'github-actions[bot]'
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        type: number
+        default: 3
     secrets:
       ISSUE_REPO_TOKEN:
         description: 'GitHub PAT with issues:write scope on the target repo'
@@ -110,6 +115,7 @@ jobs:
   create-issue:
     name: Create CI Failure Issue
     runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
 
     steps:
       # ── Anti-loop check ──

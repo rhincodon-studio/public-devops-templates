@@ -64,10 +64,16 @@ on:
         required: false
         type: string
         default: '"ubuntu-latest"'
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        type: number
+        default: 3
 
 jobs:
   sast-scan:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
 
     steps:
       - name: Checkout repo

@@ -74,6 +74,11 @@ on:
         type: string
         required: false
         default: '"ubuntu-latest"'
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        type: number
+        default: 3
 
     secrets:
       SONAR_TOKEN:
@@ -84,6 +89,7 @@ on:
 jobs:
   sonar-scan:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
 
     steps:
       - name: Checkout
