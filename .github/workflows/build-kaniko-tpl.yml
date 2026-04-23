@@ -114,7 +114,12 @@ on:
         description: 'Job timeout in minutes'
         required: false
         type: number
-        default: 3
+        default: 30
+      build_args:
+        description: 'Additional Kaniko --build-arg flags (e.g. "ARG1=val1 ARG2=val2")'
+        required: false
+        type: string
+        default: ''
     secrets:
       DOCKERHUB_USERNAME:
         required: false
@@ -236,6 +241,14 @@ jobs:
             CACHE_ARGS="--cache=true --cache-repo=${CACHE_REPO}"
           fi
 
+          # Convert space-separated build args to --build-arg flags
+          BUILD_ARGS=""
+          if [ -n "${{ inputs.build_args }}" ]; then
+            for arg in ${{ inputs.build_args }}; do
+              BUILD_ARGS="${BUILD_ARGS} --build-arg ${arg}"
+            done
+          fi
+
           docker run --network=host \
             -v $(pwd)/${{ inputs.working_directory }}:/workspace \
             -v ${DOCKER_CFG_DIR}:/kaniko/.docker:ro \
@@ -244,6 +257,7 @@ jobs:
             --dockerfile /workspace/${{ inputs.dockerfile_path }} \
             --destination ${REGISTRY_URL}/${{ inputs.container_repository }}:${VERSION} \
             --build-arg BUILD_COMMIT_SHA=${GITHUB_SHA::8} \
+            ${BUILD_ARGS} \
             ${CACHE_ARGS} \
             --image-fs-extract-retry 5
 
