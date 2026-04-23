@@ -205,7 +205,7 @@ jobs:
         run: |
           echo "Cleaning up dangling Docker images before build"
           docker container prune -f || true
-          docker image prune -af || true
+          docker image prune -f || true
 
       # --- 4️⃣ 決定目標 Registry URL ---
       - name: Set Registry URL
