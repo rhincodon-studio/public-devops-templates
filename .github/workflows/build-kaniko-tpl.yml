@@ -120,6 +120,11 @@ on:
         required: false
         type: string
         default: ''
+      kaniko_image:
+        description: 'Kaniko executor image (override to use a private registry proxy)'
+        required: false
+        type: string
+        default: 'gcr.io/kaniko-project/executor:v1.23.0-debug'
     secrets:
       DOCKERHUB_USERNAME:
         required: false
@@ -252,7 +257,7 @@ jobs:
           docker run --network=host \
             -v $(pwd)/${{ inputs.working_directory }}:/workspace \
             -v ${DOCKER_CFG_DIR}:/kaniko/.docker:ro \
-            gcr.io/kaniko-project/executor:v1.23.0-debug \
+            ${{ inputs.kaniko_image }} \
             --context /workspace \
             --dockerfile /workspace/${{ inputs.dockerfile_path }} \
             --destination ${REGISTRY_URL}/${{ inputs.container_repository }}:${VERSION} \
