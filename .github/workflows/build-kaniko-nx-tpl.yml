@@ -1,0 +1,286 @@
+# ============================================================================
+# Kaniko Build Template for Nx Monorepo (Pre-build on Runner)
+# ============================================================================
+#
+# 📋 功能說明：
+#   - 在 Runner 上執行 pre_build_command（Nx/Vite build），再用 Kaniko 包裝產物
+#   - node_modules 透過 actions/cache 跨 run 復用，避免重複 npm ci
+#   - kaniko context 為 workspace 根目錄（支援 monorepo 多 app 共用 libs）
+#   - --snapshot-mode=redo 減少 kaniko layer diff 開銷
+#   - 支援推送至 GHCR 或 DockerHub
+#
+# 🔧 使用方式：
+#
+#   📌 Nx React app（推薦 Dockerfile 只保留 nginx 靜態檔複製）：
+#   jobs:
+#     build:
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/build-kaniko-nx-tpl.yml@v1.5.0
+#       permissions:
+#         contents: read
+#         packages: write
+#       with:
+#         container_repository: "myorg/my-frontend"
+#         dockerfile_path: "apps/my-app/Dockerfile"
+#         pre_build_command: "npx nx build my-app --prod"
+#         registry: "ghcr"
+#       secrets: inherit
+#
+#   📌 Dockerfile 建議格式（Runner 已建置好 dist）：
+#     FROM nginx:1.27-alpine
+#     COPY apps/my-app/dist /usr/share/nginx/html
+#     COPY apps/my-app/nginx.conf /etc/nginx/conf.d/default.conf
+#     EXPOSE 8080
+#
+# 📦 輸入參數：
+#   - container_repository: 容器映像路徑（必填，e.g. myorg/my-service）
+#   - dockerfile_path: Dockerfile 相對路徑，相對於 workspace 根目錄（必填）
+#   - pre_build_command: 在 kaniko 前於 runner 執行的建置指令（選填）
+#   - node_version: Node.js 版本（選填，預設 22；pre_build_command 非空時啟用）
+#   - node_modules_cache_path: node_modules 路徑（選填，預設 node_modules）
+#   - snapshot_mode: kaniko snapshot 模式（選填，預設 redo）
+#   - registry: ghcr 或 dockerhub（選填，預設 ghcr）
+#   - cache: 是否啟用 kaniko layer cache（選填，預設 true）
+#   - cache_repository: 自訂 kaniko cache repo（選填，預設自動產生）
+#   - runs_on: Runner 類型（選填，預設 arc-runner-set-hank）
+#   - version: 覆寫版本號（選填）
+#   - timeout_minutes: 超時分鐘數（選填，預設 30）
+#   - build_args: 額外 kaniko --build-arg（選填，空白分隔）
+#   - kaniko_image: kaniko executor image（選填）
+#
+# ============================================================================
+
+name: 🔧 Kaniko Build Template (Nx)
+
+on:
+  workflow_call:
+    inputs:
+      container_repository:
+        description: 'Container repository path (e.g. myorg/myimage)'
+        required: true
+        type: string
+      dockerfile_path:
+        description: 'Dockerfile path relative to workspace root'
+        required: true
+        type: string
+      pre_build_command:
+        description: 'Command to run on runner before kaniko (e.g. npx nx build my-app --prod)'
+        required: false
+        type: string
+        default: ''
+      node_version:
+        description: 'Node.js version for pre_build_command'
+        required: false
+        type: string
+        default: '22'
+      node_modules_cache_path:
+        description: 'Path to node_modules to cache'
+        required: false
+        type: string
+        default: 'node_modules'
+      snapshot_mode:
+        description: 'Kaniko snapshot mode (redo / time / full)'
+        required: false
+        type: string
+        default: 'redo'
+      registry:
+        description: 'Target container registry: ghcr or dockerhub'
+        required: false
+        type: string
+        default: 'ghcr'
+      cache:
+        description: 'Enable kaniko layer caching'
+        required: false
+        type: boolean
+        default: true
+      cache_repository:
+        description: 'Remote kaniko cache repository (default: auto-generated)'
+        required: false
+        type: string
+        default: ''
+      private_registry:
+        description: 'Optional private registry hostname for auth injection'
+        required: false
+        type: string
+        default: ''
+      runs_on:
+        description: 'Runner label'
+        required: false
+        type: string
+        default: 'arc-runner-set-hank'
+      version:
+        description: 'Override version tag; if empty, auto-generates date.commit'
+        required: false
+        type: string
+        default: ''
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        type: number
+        default: 30
+      build_args:
+        description: 'Extra kaniko --build-arg flags (space-separated KEY=VALUE)'
+        required: false
+        type: string
+        default: ''
+      kaniko_image:
+        description: 'Kaniko executor image'
+        required: false
+        type: string
+        default: 'gcr.io/kaniko-project/executor:v1.23.0-debug'
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+      GHCR_TOKEN:
+        required: false
+      PRIVATE_REGISTRY_USERNAME:
+        required: false
+      PRIVATE_REGISTRY_PASSWORD:
+        required: false
+    outputs:
+      version:
+        description: 'Generated version tag (YYYY-MM-DD.commit-sha)'
+        value: ${{ jobs.kaniko-build.outputs.version }}
+
+jobs:
+  kaniko-build:
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Node.js + node_modules cache（僅當 pre_build_command 有設定時啟用）---
+      - name: Setup Node.js
+        if: inputs.pre_build_command != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Cache node_modules
+        if: inputs.pre_build_command != ''
+        id: cache-nm
+        uses: actions/cache@v4
+        with:
+          path: ${{ inputs.node_modules_cache_path }}
+          key: node-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: node-modules-
+
+      - name: Install dependencies
+        if: inputs.pre_build_command != '' && steps.cache-nm.outputs.cache-hit != 'true'
+        run: npm ci --prefer-offline
+
+      # --- Runner 端預先建置（Vite / Nx build）---
+      - name: Pre-build on runner
+        if: inputs.pre_build_command != ''
+        run: ${{ inputs.pre_build_command }}
+
+      # --- Docker Auth ---
+      - name: Configure Docker Auth (GHCR)
+        if: inputs.registry == 'ghcr'
+        env:
+          GHCR_PASS: ${{ secrets.GHCR_TOKEN || github.token }}
+        run: |
+          DOCKER_CFG_DIR="${RUNNER_TEMP}/.docker"
+          mkdir -p "${DOCKER_CFG_DIR}"
+          echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n ${{ github.actor }}:${GHCR_PASS} | base64)"'"}}}' \
+            > "${DOCKER_CFG_DIR}/config.json"
+          echo "DOCKER_CFG_DIR=${DOCKER_CFG_DIR}" >> $GITHUB_ENV
+
+      - name: Configure Docker Auth (DockerHub)
+        if: inputs.registry == 'dockerhub'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          DOCKER_CFG_DIR="${RUNNER_TEMP}/.docker"
+          mkdir -p "${DOCKER_CFG_DIR}"
+          AUTH=$(echo -n "${DOCKERHUB_USERNAME}:${DOCKERHUB_TOKEN}" | base64)
+          echo "{\"auths\":{\"https://index.docker.io/v1/\":{\"auth\":\"${AUTH}\"}}}" \
+            > "${DOCKER_CFG_DIR}/config.json"
+          echo "DOCKER_CFG_DIR=${DOCKER_CFG_DIR}" >> $GITHUB_ENV
+
+      - name: Configure Private Registry Auth
+        if: inputs.private_registry != ''
+        env:
+          PRIVATE_REGISTRY: ${{ inputs.private_registry }}
+          PRIVATE_REGISTRY_USERNAME: ${{ secrets.PRIVATE_REGISTRY_USERNAME }}
+          PRIVATE_REGISTRY_PASSWORD: ${{ secrets.PRIVATE_REGISTRY_PASSWORD }}
+        run: |
+          if [ -z "${PRIVATE_REGISTRY_USERNAME}" ] || [ -z "${PRIVATE_REGISTRY_PASSWORD}" ]; then
+            echo "::warning::PRIVATE_REGISTRY_USERNAME or PRIVATE_REGISTRY_PASSWORD not set; skipping"
+            exit 0
+          fi
+          REGISTRY_AUTH=$(echo -n "${PRIVATE_REGISTRY_USERNAME}:${PRIVATE_REGISTRY_PASSWORD}" | base64)
+          jq --arg r "${PRIVATE_REGISTRY}" --arg a "${REGISTRY_AUTH}" \
+             '.auths[$r] = {"auth": $a}' \
+             "${DOCKER_CFG_DIR}/config.json" > /tmp/_priv_cfg.json \
+          && mv /tmp/_priv_cfg.json "${DOCKER_CFG_DIR}/config.json"
+
+      # --- 版本號 ---
+      - name: Generate Version Tag
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          elif [ "${{ github.ref_type }}" == "tag" ]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="$(date '+%Y-%m-%d').${GITHUB_SHA::8}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Clean up Docker
+        run: |
+          docker container prune -f || true
+          docker image prune -f || true
+
+      # --- 決定 Registry URL 與 cache repo ---
+      - name: Set Registry and Cache URL
+        run: |
+          if [ "${{ inputs.registry }}" == "ghcr" ]; then
+            REGISTRY_URL="ghcr.io"
+          else
+            REGISTRY_URL="docker.io"
+          fi
+          echo "REGISTRY_URL=${REGISTRY_URL}" >> $GITHUB_ENV
+
+          if [ "${{ inputs.cache }}" == "true" ]; then
+            if [ -n "${{ inputs.cache_repository }}" ]; then
+              echo "CACHE_REPO=${{ inputs.cache_repository }}" >> $GITHUB_ENV
+            else
+              echo "CACHE_REPO=${REGISTRY_URL}/${{ inputs.container_repository }}/cache" >> $GITHUB_ENV
+            fi
+          fi
+
+      # --- Kaniko 建置並推送 ---
+      - name: Build and Push with Kaniko
+        run: |
+          CACHE_ARGS=""
+          if [ "${{ inputs.cache }}" == "true" ]; then
+            CACHE_ARGS="--cache=true --cache-repo=${CACHE_REPO}"
+          fi
+
+          BUILD_ARGS=""
+          if [ -n "${{ inputs.build_args }}" ]; then
+            for arg in ${{ inputs.build_args }}; do
+              BUILD_ARGS="${BUILD_ARGS} --build-arg ${arg}"
+            done
+          fi
+
+          docker run --network=host \
+            -v "$(pwd)":/workspace \
+            -v "${DOCKER_CFG_DIR}":/kaniko/.docker:ro \
+            ${{ inputs.kaniko_image }} \
+            --context /workspace \
+            --dockerfile /workspace/${{ inputs.dockerfile_path }} \
+            --destination ${REGISTRY_URL}/${{ inputs.container_repository }}:${VERSION} \
+            --snapshot-mode=${{ inputs.snapshot_mode }} \
+            --build-arg BUILD_COMMIT_SHA=${GITHUB_SHA::8} \
+            ${BUILD_ARGS} \
+            ${CACHE_ARGS} \
+            --image-fs-extract-retry 5
