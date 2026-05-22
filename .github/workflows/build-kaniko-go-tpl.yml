@@ -1,0 +1,290 @@
+# ============================================================================
+# Kaniko Build Template for Go (Pre-build on Runner)
+# ============================================================================
+#
+# 📋 功能說明：
+#   - 在 Runner 上執行 go build，再用 Kaniko 包裝二進位檔
+#   - Go module cache 透過 actions/setup-go 內建快取自動處理
+#   - kaniko context 為 workspace 根目錄
+#   - --snapshot-mode=redo 減少 kaniko layer diff 開銷
+#   - 支援推送至 GHCR 或 DockerHub
+#
+# 🔧 使用方式：
+#
+#   📌 單一 binary：
+#   jobs:
+#     build:
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/build-kaniko-go-tpl.yml@main
+#       permissions:
+#         contents: read
+#         packages: write
+#       with:
+#         container_repository: "myorg/my-service"
+#         dockerfile_path: "Dockerfile"
+#         registry: "ghcr"
+#       secrets: inherit
+#
+#   📌 指定 build 路徑和 output：
+#   jobs:
+#     build:
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/build-kaniko-go-tpl.yml@main
+#       permissions:
+#         contents: read
+#         packages: write
+#       with:
+#         container_repository: "myorg/my-service"
+#         dockerfile_path: "Dockerfile"
+#         build_command: "go build -ldflags='-s -w' -o bin/server ./cmd/server"
+#         registry: "ghcr"
+#       secrets: inherit
+#
+#   📌 Dockerfile 建議格式（Runner 已建置好 binary）：
+#     FROM gcr.io/distroless/static-debian12:nonroot
+#     COPY bin/server /server
+#     EXPOSE 8080
+#     ENTRYPOINT ["/server"]
+#
+# ============================================================================
+
+name: 🔧 Kaniko Build Template (Go)
+
+on:
+  workflow_call:
+    inputs:
+      container_repository:
+        description: 'Container repository path (e.g. myorg/myimage)'
+        required: true
+        type: string
+      dockerfile_path:
+        description: 'Dockerfile path relative to workspace root'
+        required: true
+        type: string
+      go_version:
+        description: 'Go version'
+        required: false
+        type: string
+        default: '1.23'
+      build_command:
+        description: 'Go build command (e.g. "go build -o bin/server ./cmd/server")'
+        required: false
+        type: string
+        default: 'go build -ldflags="-s -w" -o bin/app ./cmd/...'
+      working_directory:
+        description: 'Working directory for go build (default: repo root)'
+        required: false
+        type: string
+        default: '.'
+      go_private:
+        description: 'GOPRIVATE env var for private module access (e.g. "github.com/myorg/*")'
+        required: false
+        type: string
+        default: ''
+      snapshot_mode:
+        description: 'Kaniko snapshot mode (redo / time / full)'
+        required: false
+        type: string
+        default: 'redo'
+      registry:
+        description: 'Target container registry: ghcr or dockerhub'
+        required: false
+        type: string
+        default: 'ghcr'
+      cache:
+        description: 'Enable kaniko layer caching'
+        required: false
+        type: boolean
+        default: true
+      cache_repository:
+        description: 'Remote kaniko cache repository (default: auto-generated)'
+        required: false
+        type: string
+        default: ''
+      private_registry:
+        description: 'Optional private registry hostname for auth injection'
+        required: false
+        type: string
+        default: ''
+      runs_on:
+        description: 'Runner label'
+        required: false
+        type: string
+        default: 'arc-runner-set-hank'
+      version:
+        description: 'Override version tag; if empty, auto-generates date.commit'
+        required: false
+        type: string
+        default: ''
+      timeout_minutes:
+        description: 'Job timeout in minutes'
+        required: false
+        type: number
+        default: 30
+      build_args:
+        description: 'Extra kaniko --build-arg flags (space-separated KEY=VALUE)'
+        required: false
+        type: string
+        default: ''
+      kaniko_image:
+        description: 'Kaniko executor image'
+        required: false
+        type: string
+        default: 'gcr.io/kaniko-project/executor:v1.23.0-debug'
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+      GHCR_TOKEN:
+        required: false
+      PRIVATE_REGISTRY_USERNAME:
+        required: false
+      PRIVATE_REGISTRY_PASSWORD:
+        required: false
+      GO_PRIVATE_TOKEN:
+        description: 'GitHub token for GOPRIVATE module access'
+        required: false
+    outputs:
+      version:
+        description: 'Generated version tag (YYYY-MM-DD.commit-sha)'
+        value: ${{ jobs.kaniko-build.outputs.version }}
+
+jobs:
+  kaniko-build:
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Go Setup (includes built-in module cache) ---
+      - name: Setup Go ${{ inputs.go_version }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go_version }}
+
+      # --- Configure GOPRIVATE if needed ---
+      - name: Configure GOPRIVATE
+        if: inputs.go_private != ''
+        env:
+          GO_PRIVATE_TOKEN: ${{ secrets.GO_PRIVATE_TOKEN || github.token }}
+        run: |
+          go env -w GOPRIVATE="${{ inputs.go_private }}"
+          git config --global url."https://x-access-token:${GO_PRIVATE_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+      # --- Go build ---
+      - name: Build Go binary
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          CGO_ENABLED: '0'
+          GOOS: linux
+          GOARCH: amd64
+        run: ${{ inputs.build_command }}
+
+      # --- Docker Auth ---
+      - name: Configure Docker Auth (GHCR)
+        if: inputs.registry == 'ghcr'
+        env:
+          GHCR_PASS: ${{ secrets.GHCR_TOKEN || github.token }}
+        run: |
+          DOCKER_CFG_DIR="${RUNNER_TEMP}/.docker"
+          mkdir -p "${DOCKER_CFG_DIR}"
+          echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n ${{ github.actor }}:${GHCR_PASS} | base64)"'"}}}' \
+            > "${DOCKER_CFG_DIR}/config.json"
+          echo "DOCKER_CFG_DIR=${DOCKER_CFG_DIR}" >> $GITHUB_ENV
+
+      - name: Configure Docker Auth (DockerHub)
+        if: inputs.registry == 'dockerhub'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          DOCKER_CFG_DIR="${RUNNER_TEMP}/.docker"
+          mkdir -p "${DOCKER_CFG_DIR}"
+          AUTH=$(echo -n "${DOCKERHUB_USERNAME}:${DOCKERHUB_TOKEN}" | base64)
+          echo "{\"auths\":{\"https://index.docker.io/v1/\":{\"auth\":\"${AUTH}\"}}}" \
+            > "${DOCKER_CFG_DIR}/config.json"
+          echo "DOCKER_CFG_DIR=${DOCKER_CFG_DIR}" >> $GITHUB_ENV
+
+      - name: Configure Private Registry Auth
+        if: inputs.private_registry != ''
+        env:
+          PRIVATE_REGISTRY: ${{ inputs.private_registry }}
+          PRIVATE_REGISTRY_USERNAME: ${{ secrets.PRIVATE_REGISTRY_USERNAME }}
+          PRIVATE_REGISTRY_PASSWORD: ${{ secrets.PRIVATE_REGISTRY_PASSWORD }}
+        run: |
+          if [ -z "${PRIVATE_REGISTRY_USERNAME}" ] || [ -z "${PRIVATE_REGISTRY_PASSWORD}" ]; then
+            echo "::warning::PRIVATE_REGISTRY_USERNAME or PRIVATE_REGISTRY_PASSWORD not set; skipping"
+            exit 0
+          fi
+          REGISTRY_AUTH=$(echo -n "${PRIVATE_REGISTRY_USERNAME}:${PRIVATE_REGISTRY_PASSWORD}" | base64)
+          jq --arg r "${PRIVATE_REGISTRY}" --arg a "${REGISTRY_AUTH}" \
+             '.auths[$r] = {"auth": $a}' \
+             "${DOCKER_CFG_DIR}/config.json" > /tmp/_priv_cfg.json \
+          && mv /tmp/_priv_cfg.json "${DOCKER_CFG_DIR}/config.json"
+
+      # --- Version ---
+      - name: Generate Version Tag
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          elif [ "${{ github.ref_type }}" == "tag" ]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="$(date '+%Y-%m-%d').${GITHUB_SHA::8}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Clean up Docker
+        run: |
+          docker container prune -f || true
+          docker image prune -f || true
+
+      # --- Registry + Cache URL ---
+      - name: Set Registry and Cache URL
+        run: |
+          if [ "${{ inputs.registry }}" == "ghcr" ]; then
+            REGISTRY_URL="ghcr.io"
+          else
+            REGISTRY_URL="docker.io"
+          fi
+          echo "REGISTRY_URL=${REGISTRY_URL}" >> $GITHUB_ENV
+
+          if [ "${{ inputs.cache }}" == "true" ]; then
+            if [ -n "${{ inputs.cache_repository }}" ]; then
+              echo "CACHE_REPO=${{ inputs.cache_repository }}" >> $GITHUB_ENV
+            else
+              echo "CACHE_REPO=${REGISTRY_URL}/${{ inputs.container_repository }}/cache" >> $GITHUB_ENV
+            fi
+          fi
+
+      # --- Kaniko Build & Push ---
+      - name: Build and Push with Kaniko
+        run: |
+          CACHE_ARGS=""
+          if [ "${{ inputs.cache }}" == "true" ]; then
+            CACHE_ARGS="--cache=true --cache-repo=${CACHE_REPO}"
+          fi
+
+          BUILD_ARGS=""
+          if [ -n "${{ inputs.build_args }}" ]; then
+            for arg in ${{ inputs.build_args }}; do
+              BUILD_ARGS="${BUILD_ARGS} --build-arg ${arg}"
+            done
+          fi
+
+          docker run --network=host \
+            -v "$(pwd)":/workspace \
+            -v "${DOCKER_CFG_DIR}":/kaniko/.docker:ro \
+            ${{ inputs.kaniko_image }} \
+            --context /workspace \
+            --dockerfile /workspace/${{ inputs.dockerfile_path }} \
+            --destination ${REGISTRY_URL}/${{ inputs.container_repository }}:${VERSION} \
+            --snapshot-mode=${{ inputs.snapshot_mode }} \
+            --build-arg BUILD_COMMIT_SHA=${GITHUB_SHA::8} \
+            ${BUILD_ARGS} \
+            ${CACHE_ARGS} \
+            --image-fs-extract-retry 5
