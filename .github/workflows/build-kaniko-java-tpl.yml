@@ -75,6 +75,11 @@ on:
         required: false
         type: string
         default: '21'
+      maven_version:
+        description: 'Maven version to install (if not pre-installed on runner)'
+        required: false
+        type: string
+        default: '3.9.9'
       java_distribution:
         description: 'JDK distribution (temurin, corretto, zulu, etc.)'
         required: false
@@ -182,6 +187,19 @@ jobs:
         with:
           java-version: ${{ inputs.java_version }}
           distribution: ${{ inputs.java_distribution }}
+
+      # --- Install Maven (if not pre-installed on self-hosted runner) ---
+      - name: Setup Maven
+        run: |
+          if command -v mvn &> /dev/null; then
+            echo "Maven already installed: $(mvn --version | head -1)"
+          else
+            echo "Installing Maven ${{ inputs.maven_version }}..."
+            curl -sL "https://dlcdn.apache.org/maven/maven-3/${{ inputs.maven_version }}/binaries/apache-maven-${{ inputs.maven_version }}-bin.tar.gz" \
+              | tar xz -C /opt
+            echo "/opt/apache-maven-${{ inputs.maven_version }}/bin" >> $GITHUB_PATH
+            echo "Maven installed: $(/opt/apache-maven-${{ inputs.maven_version }}/bin/mvn --version | head -1)"
+          fi
 
       # --- Maven mirror/proxy (Nexus, Artifactory, etc.) ---
       - name: Configure Maven Mirror
