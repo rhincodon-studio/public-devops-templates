@@ -208,10 +208,11 @@ jobs:
           else
             DOWNLOAD_URL="https://repo1.maven.org/maven2/${MVN_PATH}"
           fi
+          MAVEN_HOME="${RUNNER_TEMP}/apache-maven-${MAVEN_VERSION}"
           echo "Downloading from: ${DOWNLOAD_URL}"
-          curl -sfL "${DOWNLOAD_URL}" | tar xz -C /opt
-          echo "/opt/apache-maven-${MAVEN_VERSION}/bin" >> $GITHUB_PATH
-          /opt/apache-maven-${MAVEN_VERSION}/bin/mvn --version | head -1
+          curl -sfL "${DOWNLOAD_URL}" | tar xz -C "${RUNNER_TEMP}"
+          echo "${MAVEN_HOME}/bin" >> $GITHUB_PATH
+          "${MAVEN_HOME}/bin/mvn" --version | head -1
 
       # --- Maven mirror/proxy (Nexus, Artifactory, etc.) ---
       - name: Configure Maven Mirror
