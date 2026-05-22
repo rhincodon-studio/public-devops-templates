@@ -38,6 +38,17 @@
 #         registry: "ghcr"
 #       secrets: inherit
 #
+#   📌 使用叢集內 Nexus/Artifactory Maven proxy：
+#   jobs:
+#     build:
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/build-kaniko-java-tpl.yml@main
+#       with:
+#         container_repository: "myorg/my-service"
+#         dockerfile_path: "apps/my-service/Dockerfile"
+#         maven_mirror_url: "http://nexus.internal:8081/repository/maven-public/"
+#         registry: "ghcr"
+#       secrets: inherit
+#
 #   📌 Dockerfile 建議格式（Runner 已建置好 JAR）：
 #     FROM eclipse-temurin:21-jre-alpine
 #     COPY apps/my-service/target/*.jar /app/app.jar
@@ -79,6 +90,11 @@ on:
         required: false
         type: string
         default: '-Xmx1024m'
+      maven_mirror_url:
+        description: 'Maven mirror/proxy URL (e.g. Nexus, Artifactory). If set, generates settings.xml with <mirror> config'
+        required: false
+        type: string
+        default: ''
       working_directory:
         description: 'Working directory for Maven build (default: repo root)'
         required: false
@@ -166,6 +182,23 @@ jobs:
         with:
           java-version: ${{ inputs.java_version }}
           distribution: ${{ inputs.java_distribution }}
+
+      # --- Maven mirror/proxy (Nexus, Artifactory, etc.) ---
+      - name: Configure Maven Mirror
+        if: inputs.maven_mirror_url != ''
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml << 'SETTINGS'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>mirror</id>
+                <mirrorOf>*</mirrorOf>
+                <url>${{ inputs.maven_mirror_url }}</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          SETTINGS
 
       # --- Maven dependency cache ---
       - name: Cache Maven repository
