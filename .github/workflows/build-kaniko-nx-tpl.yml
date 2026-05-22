@@ -42,7 +42,7 @@
 #   - registry: ghcr 或 dockerhub（選填，預設 ghcr）
 #   - cache: 是否啟用 kaniko layer cache（選填，預設 true）
 #   - cache_repository: 自訂 kaniko cache repo（選填，預設自動產生）
-#   - runs_on: Runner 類型（選填，預設 arc-runner-set-hank）
+#   - runs_on: Runner 類型（選填，預設 arc-runner-set）
 #   - version: 覆寫版本號（選填）
 #   - timeout_minutes: 超時分鐘數（選填，預設 30）
 #   - build_args: 額外 kaniko --build-arg（選填，空白分隔）
@@ -107,7 +107,7 @@ on:
         description: 'Runner label'
         required: false
         type: string
-        default: 'arc-runner-set-hank'
+        default: 'arc-runner-set'
       version:
         description: 'Override version tag; if empty, auto-generates date.commit'
         required: false
