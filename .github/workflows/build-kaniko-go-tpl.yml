@@ -108,7 +108,7 @@ on:
         description: 'Runner label'
         required: false
         type: string
-        default: 'arc-runner-set-hank'
+        default: 'arc-runner-set'
       version:
         description: 'Override version tag; if empty, auto-generates date.commit'
         required: false
