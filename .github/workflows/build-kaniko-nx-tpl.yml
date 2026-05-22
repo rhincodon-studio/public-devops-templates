@@ -5,6 +5,7 @@
 # 📋 功能說明：
 #   - 在 Runner 上執行 pre_build_command（Nx/Vite build），再用 Kaniko 包裝產物
 #   - node_modules 透過 actions/cache 跨 run 復用，避免重複 npm ci
+#   - .nx/cache 跨 run 持久化，Nx computation cache hit 可大幅縮短建置時間
 #   - kaniko context 為 workspace 根目錄（支援 monorepo 多 app 共用 libs）
 #   - --snapshot-mode=redo 減少 kaniko layer diff 開銷
 #   - 支援推送至 GHCR 或 DockerHub
@@ -168,6 +169,16 @@ jobs:
           path: ${{ inputs.node_modules_cache_path }}
           key: node-modules-${{ hashFiles('package-lock.json') }}
           restore-keys: node-modules-
+
+      - name: Cache Nx computation cache
+        if: inputs.pre_build_command != ''
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            nx-${{ runner.os }}-
 
       - name: Install dependencies
         if: inputs.pre_build_command != '' && steps.cache-nm.outputs.cache-hit != 'true'
