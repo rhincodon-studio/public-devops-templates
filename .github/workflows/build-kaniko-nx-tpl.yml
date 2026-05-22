@@ -45,6 +45,7 @@
 #   - runs_on: Runner 類型（選填，預設 arc-runner-set）
 #   - version: 覆寫版本號（選填）
 #   - timeout_minutes: 超時分鐘數（選填，預設 30）
+#   - npm_install_args: 額外 npm ci 參數（選填，e.g. "--legacy-peer-deps"）
 #   - build_args: 額外 kaniko --build-arg（選填，空白分隔）
 #   - kaniko_image: kaniko executor image（選填）
 #
@@ -123,6 +124,11 @@ on:
         required: false
         type: string
         default: ''
+      npm_install_args:
+        description: 'Extra npm ci arguments (e.g. "--legacy-peer-deps")'
+        required: false
+        type: string
+        default: ''
       kaniko_image:
         description: 'Kaniko executor image'
         required: false
@@ -182,7 +188,7 @@ jobs:
 
       - name: Install dependencies
         if: inputs.pre_build_command != '' && steps.cache-nm.outputs.cache-hit != 'true'
-        run: npm ci --prefer-offline
+        run: npm ci --prefer-offline ${{ inputs.npm_install_args }}
 
       # --- Runner 端預先建置（Vite / Nx build）---
       - name: Pre-build on runner
@@ -197,7 +203,7 @@ jobs:
         run: |
           DOCKER_CFG_DIR="${RUNNER_TEMP}/.docker"
           mkdir -p "${DOCKER_CFG_DIR}"
-          echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n ${{ github.actor }}:${GHCR_PASS} | base64)"'"}}}' \
+          echo '{"auths":{"ghcr.io":{"auth":"'"$(echo -n ${{ github.actor }}:${GHCR_PASS} | base64 -w 0)"'"}}}' \
             > "${DOCKER_CFG_DIR}/config.json"
           echo "DOCKER_CFG_DIR=${DOCKER_CFG_DIR}" >> $GITHUB_ENV
 
@@ -209,7 +215,7 @@ jobs:
         run: |
           DOCKER_CFG_DIR="${RUNNER_TEMP}/.docker"
           mkdir -p "${DOCKER_CFG_DIR}"
-          AUTH=$(echo -n "${DOCKERHUB_USERNAME}:${DOCKERHUB_TOKEN}" | base64)
+          AUTH=$(echo -n "${DOCKERHUB_USERNAME}:${DOCKERHUB_TOKEN}" | base64 -w 0)
           echo "{\"auths\":{\"https://index.docker.io/v1/\":{\"auth\":\"${AUTH}\"}}}" \
             > "${DOCKER_CFG_DIR}/config.json"
           echo "DOCKER_CFG_DIR=${DOCKER_CFG_DIR}" >> $GITHUB_ENV
@@ -225,7 +231,7 @@ jobs:
             echo "::warning::PRIVATE_REGISTRY_USERNAME or PRIVATE_REGISTRY_PASSWORD not set; skipping"
             exit 0
           fi
-          REGISTRY_AUTH=$(echo -n "${PRIVATE_REGISTRY_USERNAME}:${PRIVATE_REGISTRY_PASSWORD}" | base64)
+          REGISTRY_AUTH=$(echo -n "${PRIVATE_REGISTRY_USERNAME}:${PRIVATE_REGISTRY_PASSWORD}" | base64 -w 0)
           jq --arg r "${PRIVATE_REGISTRY}" --arg a "${REGISTRY_AUTH}" \
              '.auths[$r] = {"auth": $a}' \
              "${DOCKER_CFG_DIR}/config.json" > /tmp/_priv_cfg.json \
