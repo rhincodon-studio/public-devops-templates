@@ -5,9 +5,10 @@
 # 📋 功能說明：
 #   - 更新 Helm chart 的 values.yaml 中的 image tag
 #   - 自動 commit 和 push 變更
+#   - 支援更新獨立 manifest repo（rs-manifest 等）
 #   - 輸出是否有變更供下游 job 使用
 #
-# 🔧 使用方式：
+# 🔧 使用方式（更新同一 repo）：
 #   jobs:
 #     update-tag:
 #       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-update-tag-kubernetes-tpl.yml@main
@@ -19,11 +20,25 @@
 #       secrets:
 #         GIT_TOKEN: ${{ secrets.GIT_TOKEN }}  # PAT with repo write access
 #
+# 🔧 使用方式（更新獨立 manifest repo）：
+#   jobs:
+#     update-tag:
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/deploy-update-tag-kubernetes-tpl.yml@main
+#       with:
+#         app: "my-app"
+#         cluster: "MY-CLUSTER"
+#         namespace: "my-app"
+#         image_tag: "2024-01-01.abc12345"
+#         manifest_repo: "my-org/rs-manifest"
+#       secrets:
+#         GIT_TOKEN: ${{ secrets.GIT_TOKEN }}  # PAT with repo write access
+#
 # 📦 輸入參數：
 #   - app: 應用程式名稱（必填）
 #   - cluster: 目標叢集名稱（必填）
 #   - namespace: Kubernetes namespace（必填）
 #   - image_tag: 要更新的映像標籤（必填）
+#   - manifest_repo: manifest 儲存庫（選填，預設：當前 repo）
 #   - values_path: values.yaml 路徑模式（選填）
 #   - triggered_by: 觸發來源（選填）
 #   - commit_sha: 上游 commit SHA（選填）
@@ -58,6 +73,11 @@ on:
         description: 'Image tag to update'
         required: true
         type: string
+      manifest_repo:
+        description: 'Manifest repository to update (e.g. my-org/rs-manifest). Defaults to current repo.'
+        required: false
+        type: string
+        default: ''
       values_path:
         description: 'Path pattern for values.yaml (default: deploy/{app}/helm/{cluster}/{namespace}/values.yaml)'
         required: false
@@ -115,6 +135,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GIT_TOKEN }}
+          repository: ${{ inputs.manifest_repo != '' && inputs.manifest_repo || github.repository }}
           fetch-depth: 0
 
       - name: Determine values.yaml path
