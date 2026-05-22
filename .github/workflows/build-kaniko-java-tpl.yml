@@ -189,17 +189,29 @@ jobs:
           distribution: ${{ inputs.java_distribution }}
 
       # --- Install Maven (if not pre-installed on self-hosted runner) ---
+      # Downloads from maven_mirror_url (Nexus/Artifactory) if set,
+      # otherwise falls back to Maven Central.
       - name: Setup Maven
+        env:
+          MAVEN_VERSION: ${{ inputs.maven_version }}
+          MAVEN_MIRROR_URL: ${{ inputs.maven_mirror_url }}
         run: |
           if command -v mvn &> /dev/null; then
             echo "Maven already installed: $(mvn --version | head -1)"
-          else
-            echo "Installing Maven ${{ inputs.maven_version }}..."
-            curl -sL "https://dlcdn.apache.org/maven/maven-3/${{ inputs.maven_version }}/binaries/apache-maven-${{ inputs.maven_version }}-bin.tar.gz" \
-              | tar xz -C /opt
-            echo "/opt/apache-maven-${{ inputs.maven_version }}/bin" >> $GITHUB_PATH
-            echo "Maven installed: $(/opt/apache-maven-${{ inputs.maven_version }}/bin/mvn --version | head -1)"
+            exit 0
           fi
+          echo "Installing Maven ${MAVEN_VERSION}..."
+          MVN_TAR="apache-maven-${MAVEN_VERSION}-bin.tar.gz"
+          MVN_PATH="org/apache/maven/apache-maven/${MAVEN_VERSION}/${MVN_TAR}"
+          if [ -n "${MAVEN_MIRROR_URL}" ]; then
+            DOWNLOAD_URL="${MAVEN_MIRROR_URL%/}/${MVN_PATH}"
+          else
+            DOWNLOAD_URL="https://repo1.maven.org/maven2/${MVN_PATH}"
+          fi
+          echo "Downloading from: ${DOWNLOAD_URL}"
+          curl -sfL "${DOWNLOAD_URL}" | tar xz -C /opt
+          echo "/opt/apache-maven-${MAVEN_VERSION}/bin" >> $GITHUB_PATH
+          /opt/apache-maven-${MAVEN_VERSION}/bin/mvn --version | head -1
 
       # --- Maven mirror/proxy (Nexus, Artifactory, etc.) ---
       - name: Configure Maven Mirror
