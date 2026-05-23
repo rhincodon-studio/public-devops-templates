@@ -275,6 +275,9 @@ jobs:
           fi
 
       # --- Kaniko 建置並推送 ---
+      - name: Pull Kaniko image
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin && docker pull ${{ inputs.kaniko_image }}
+
       - name: Build and Push with Kaniko
         run: |
           CACHE_ARGS=""
