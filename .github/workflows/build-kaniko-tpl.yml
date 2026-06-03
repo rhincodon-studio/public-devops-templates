@@ -120,6 +120,11 @@ on:
         required: false
         type: string
         default: ''
+      registry_mirror:
+        description: 'Docker Hub pull-through proxy hostname (e.g. registry.example.com). Auth uses the same PRIVATE_REGISTRY credentials.'
+        required: false
+        type: string
+        default: ''
       kaniko_image:
         description: 'Kaniko executor image (override to use a private registry proxy)'
         required: false
@@ -195,6 +200,24 @@ jobs:
              '.auths[$r] = {"auth": $a}' \
              "${DOCKER_CFG_DIR}/config.json" > /tmp/_private_registry_cfg.json \
           && mv /tmp/_private_registry_cfg.json "${DOCKER_CFG_DIR}/config.json"
+
+      # --- 2️⃣.6 Inject Docker Hub mirror (pull-through proxy) auth ---
+      - name: Configure Registry Mirror Auth
+        if: inputs.registry_mirror != ''
+        env:
+          REGISTRY_MIRROR: ${{ inputs.registry_mirror }}
+          PRIVATE_REGISTRY_USERNAME: ${{ secrets.PRIVATE_REGISTRY_USERNAME }}
+          PRIVATE_REGISTRY_PASSWORD: ${{ secrets.PRIVATE_REGISTRY_PASSWORD }}
+        run: |
+          if [ -z "${PRIVATE_REGISTRY_USERNAME}" ] || [ -z "${PRIVATE_REGISTRY_PASSWORD}" ]; then
+            echo "::warning::PRIVATE_REGISTRY_USERNAME or PRIVATE_REGISTRY_PASSWORD not set; skipping mirror auth"
+            exit 0
+          fi
+          MIRROR_AUTH=$(echo -n "${PRIVATE_REGISTRY_USERNAME}:${PRIVATE_REGISTRY_PASSWORD}" | base64 -w 0)
+          jq --arg r "${REGISTRY_MIRROR}" --arg a "${MIRROR_AUTH}" \
+             '.auths[$r] = {"auth": $a}' \
+             "${DOCKER_CFG_DIR}/config.json" > /tmp/_mirror_cfg.json \
+          && mv /tmp/_mirror_cfg.json "${DOCKER_CFG_DIR}/config.json"
 
       # --- 3️⃣ 計算版本號 (tag 優先，否則日期+commit) ---
       - name: Generate Version Tag
