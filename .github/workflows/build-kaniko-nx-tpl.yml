@@ -36,8 +36,11 @@
 #   - container_repository: 容器映像路徑（必填，e.g. myorg/my-service）
 #   - dockerfile_path: Dockerfile 相對路徑，相對於 workspace 根目錄（必填）
 #   - pre_build_command: 在 kaniko 前於 runner 執行的建置指令（選填）
+#   - working_directory: npm ci 與 pre_build_command 的執行目錄（選填，預設 .；
+#     子目錄 Nx workspace 設為 apps/<app> 後，node_modules / .nx/cache /
+#     package-lock.json 都會自動定位到該目錄，無需另外設定 cache path）
 #   - node_version: Node.js 版本（選填，預設 22；pre_build_command 非空時啟用）
-#   - node_modules_cache_path: node_modules 路徑（選填，預設 node_modules）
+#   - node_modules_cache_path: node_modules 路徑，相對 working_directory（選填，預設 node_modules）
 #   - snapshot_mode: kaniko snapshot 模式（選填，預設 redo）
 #   - registry: ghcr 或 dockerhub（選填，預設 ghcr）
 #   - cache: 是否啟用 kaniko layer cache（選填，預設 true）
@@ -69,13 +72,18 @@ on:
         required: false
         type: string
         default: ''
+      working_directory:
+        description: 'Working directory for npm ci and pre_build_command. Cache paths (node_modules, .nx/cache) and the package-lock.json used for cache keys are resolved relative to this. Default repo root.'
+        required: false
+        type: string
+        default: '.'
       node_version:
         description: 'Node.js version for pre_build_command'
         required: false
         type: string
         default: '22'
       node_modules_cache_path:
-        description: 'Path to node_modules to cache'
+        description: 'Path to node_modules to cache, relative to working_directory'
         required: false
         type: string
         default: 'node_modules'
@@ -177,27 +185,29 @@ jobs:
         id: cache-nm
         uses: actions/cache@v4
         with:
-          path: ${{ inputs.node_modules_cache_path }}
-          key: node-modules-${{ hashFiles('package-lock.json') }}
+          path: ${{ inputs.working_directory }}/${{ inputs.node_modules_cache_path }}
+          key: node-modules-${{ hashFiles(format('{0}/package-lock.json', inputs.working_directory)) }}
           restore-keys: node-modules-
 
       - name: Cache Nx computation cache
         if: inputs.pre_build_command != ''
         uses: actions/cache@v4
         with:
-          path: .nx/cache
-          key: nx-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          path: ${{ inputs.working_directory }}/.nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles(format('{0}/package-lock.json', inputs.working_directory)) }}-${{ github.sha }}
           restore-keys: |
-            nx-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            nx-${{ runner.os }}-${{ hashFiles(format('{0}/package-lock.json', inputs.working_directory)) }}-
             nx-${{ runner.os }}-
 
       - name: Install dependencies
         if: inputs.pre_build_command != '' && steps.cache-nm.outputs.cache-hit != 'true'
+        working-directory: ${{ inputs.working_directory }}
         run: npm ci --prefer-offline ${{ inputs.npm_install_args }}
 
       # --- Runner 端預先建置（Vite / Nx build）---
       - name: Pre-build on runner
         if: inputs.pre_build_command != ''
+        working-directory: ${{ inputs.working_directory }}
         run: ${{ inputs.pre_build_command }}
 
       # --- Docker Auth ---
