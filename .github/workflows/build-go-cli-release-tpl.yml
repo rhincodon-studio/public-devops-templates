@@ -1,0 +1,181 @@
+# ============================================================================
+# Go CLI Release Template
+# ============================================================================
+#
+# 📋 功能說明：
+#   - Go CLI 跨平台 binary 建置與 GitHub Release 發佈的通用 template
+#   - 支援 test → cross-compile matrix build → artifact upload → GitHub Release
+#   - 自動從 git tag 計算版本號並 embed 至 binary（-X main.version）
+#   - 支援 sha256sum checksums 產生
+#
+# 🔧 使用方式：
+#
+#   jobs:
+#     release:
+#       uses: rhincodon-studio/public-devops-templates/.github/workflows/build-go-cli-release-tpl.yml@v1.5.5
+#       permissions:
+#         contents: write
+#       with:
+#         app_dir: apps/core/my-cli
+#         binary_name: my-cli
+#         cmd_path: ./cmd/my-cli
+#         tag_prefix: 'my-cli/'
+#         release_tag_prefix: 'refs/tags/my-cli/v'
+#         release_name: my-cli
+#         test_cmd: go test -count=1 ./...
+#         matrix: |
+#           [
+#             {"goos":"linux","goarch":"amd64","suffix":"linux-amd64","ext":""},
+#             {"goos":"darwin","goarch":"arm64","suffix":"macos-arm64","ext":""},
+#             {"goos":"windows","goarch":"amd64","suffix":"windows-amd64","ext":".exe"}
+#           ]
+#         add_checksums: true
+#
+# 📦 輸入參數：
+#   - app_dir:             Go 模組根目錄（相對於 repo root）（必填）
+#   - binary_name:         輸出 binary 的基底名稱（必填）
+#   - cmd_path:            go build 入口 package 路徑（相對於 app_dir）（必填）
+#   - tag_prefix:          從 tag 名稱剝除的前綴，用於計算 VERSION（必填）
+#                          例：tag=my-cli/v1.2.3，prefix=my-cli/ → VERSION=v1.2.3
+#   - release_tag_prefix:  觸發 release job 的 refs/tags/ 前綴（必填）
+#                          例：refs/tags/my-cli/v
+#   - release_name:        GitHub Release 標題前綴（必填）
+#   - test_cmd:            CI 測試指令（選填，預設：go vet ./...）
+#   - matrix:              JSON array，每項含 {goos, goarch, suffix, ext}（必填）
+#   - add_checksums:       是否產生 sha256sum checksums.txt（選填，預設：false）
+#   - runs_on:             Runner 類型（選填，預設：["self-hosted", "linux"]）
+#
+# 🔐 必要 Permissions：
+#   - contents: write（release job 需要建立 GitHub Release）
+#
+# ============================================================================
+
+name: Go CLI Release (internal template)
+
+on:
+  workflow_call:
+    inputs:
+      app_dir:
+        description: 'App directory relative to repo root (e.g. apps/core/bridge)'
+        type: string
+        required: true
+      binary_name:
+        description: 'Output binary base name (e.g. my-cli)'
+        type: string
+        required: true
+      cmd_path:
+        description: 'Go main package path relative to app_dir (e.g. ./cmd/my-cli)'
+        type: string
+        required: true
+      tag_prefix:
+        description: 'Tag prefix to strip when computing VERSION (e.g. my-cli/)'
+        type: string
+        required: true
+      release_tag_prefix:
+        description: 'refs/tags/ prefix that triggers a release (e.g. refs/tags/my-cli/v)'
+        type: string
+        required: true
+      release_name:
+        description: 'Display name prefix in the GitHub Release title (e.g. "my-cli")'
+        type: string
+        required: true
+      test_cmd:
+        description: 'CI command to run (go test / go vet / etc.)'
+        type: string
+        default: 'go vet ./...'
+      matrix:
+        description: 'JSON array of {goos, goarch, suffix, ext} objects for cross-compile matrix'
+        type: string
+        required: true
+      add_checksums:
+        description: 'Generate sha256sum checksums.txt and include in release assets'
+        type: boolean
+        default: false
+      runs_on:
+        description: 'Runner label JSON array (e.g. ["self-hosted","linux"] or ["ubuntu-latest"])'
+        type: string
+        default: '["self-hosted", "linux"]'
+
+jobs:
+  test:
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ inputs.app_dir }}/go.mod
+          cache-dependency-path: ${{ inputs.app_dir }}/go.sum
+
+      - name: CI
+        working-directory: ${{ inputs.app_dir }}
+        env:
+          CGO_ENABLED: "0"
+        run: ${{ inputs.test_cmd }}
+
+  build:
+    needs: test
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(inputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ inputs.app_dir }}/go.mod
+          cache-dependency-path: ${{ inputs.app_dir }}/go.sum
+
+      - name: Build CLI
+        working-directory: ${{ inputs.app_dir }}
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          VERSION="${GITHUB_REF_NAME#${{ inputs.tag_prefix }}}"
+          if [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
+            VERSION="${GITHUB_SHA::12}"
+          fi
+          go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" \
+            -o "dist/${{ inputs.binary_name }}-${{ matrix.suffix }}${{ matrix.ext }}" \
+            "${{ inputs.cmd_path }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.binary_name }}-${{ matrix.suffix }}
+          path: ${{ inputs.app_dir }}/dist/${{ inputs.binary_name }}-${{ matrix.suffix }}${{ matrix.ext }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: ${{ startsWith(github.ref, inputs.release_tag_prefix) }}
+    runs-on: ${{ fromJSON(inputs.runs_on) }}
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          find artifacts -type f -name '${{ inputs.binary_name }}-*' -exec cp {} release/ \;
+          chmod +x release/* || true
+          if [ "${{ inputs.add_checksums }}" = "true" ]; then
+            cd release && sha256sum * > checksums.txt
+          fi
+          ls -lh release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ inputs.release_name }} ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release/*
