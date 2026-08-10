@@ -199,6 +199,11 @@ jobs:
           KUBECONFIG_B64="${{ steps.kubeconfig.outputs.kubeconfig_b64 }}"
           CLUSTER_NAME="${{ steps.kubeconfig.outputs.cluster_name }}"
 
+          # GHCR credentials for `helm registry login` INSIDE the container (see below —
+          # the $DOCKER_MOUNT_ARGS copy-in above is not a reliable substitute for this).
+          GHCR_LOGIN_USER="${{ github.actor }}"
+          GHCR_LOGIN_TOKEN="${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}"
+
           docker run --rm \
             -v $(pwd):/workspace \
             $DOCKER_MOUNT_ARGS \
@@ -207,6 +212,8 @@ jobs:
             -e HELM_DEBUG=1 \
             -e KUBECONFIG_B64="$KUBECONFIG_B64" \
             -e CLUSTER_NAME="$CLUSTER_NAME" \
+            -e GHCR_LOGIN_USER="$GHCR_LOGIN_USER" \
+            -e GHCR_LOGIN_TOKEN="$GHCR_LOGIN_TOKEN" \
             -w /workspace \
             --entrypoint /bin/sh \
             ${{ inputs.k8s_deploy_image }} \
@@ -230,6 +237,25 @@ jobs:
               else
                 echo "⚠️ No kubeconfig provided"
               fi
+
+              # ⚠️ 2026-08-10: the copied-in $DOCKER_CONFIG above is NOT a reliable source of
+              # GHCR credentials for helm — on ARC/DinD runners `docker login` on the host can
+              # write its auth via a credential helper (credsStore) instead of embedding it in
+              # config.json, so the file that gets copied into this container looks valid
+              # (starts with `{`) but carries no usable "auths" entry. Chasing that down cost a
+              # long HEAD-request-by-HEAD-request diagnosis on a private OCI chart pull that
+              # kept returning 401→403 despite a token verified (by hand, outside this
+              # container) to have full read access. `helm registry login` here talks to
+              # ghcr.io directly and writes helm own registry credential store — no dependency
+              # on whatever the host docker credential backend decided to do.
+              if [ -n "$GHCR_LOGIN_TOKEN" ]; then
+                if echo "$GHCR_LOGIN_TOKEN" | helm registry login ghcr.io -u "$GHCR_LOGIN_USER" --password-stdin; then
+                  echo "✅ helm registry login ghcr.io ok"
+                else
+                  echo "⚠️ helm registry login ghcr.io failed — OCI chart dependencies on ghcr.io may 401/403 below"
+                fi
+              fi
+
               echo "🔍 Debug info:" && helm version
               echo "📂 Chart dependencies:" && ls -la /workspace/deploy/*/helm/*/*/charts/ 2>/dev/null || echo "No charts dir found"
               git config --global --add safe.directory /workspace
