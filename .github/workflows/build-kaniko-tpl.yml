@@ -129,7 +129,7 @@ on:
         description: 'Kaniko executor image (override to use a private registry proxy)'
         required: false
         type: string
-        default: 'gcr.io/kaniko-project/executor:v1.23.0-debug'
+        default: 'ghcr.registry.typus.studio/rhincodon-studio/kaniko-executor:v1.23.0-debug'
     secrets:
       DOCKERHUB_USERNAME:
         required: false

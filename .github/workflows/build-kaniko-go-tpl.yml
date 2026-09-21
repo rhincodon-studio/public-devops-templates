@@ -128,7 +128,7 @@ on:
         description: 'Kaniko executor image'
         required: false
         type: string
-        default: 'ghcr.io/rhincodon-studio/kaniko-executor:v1.23.0-debug'
+        default: 'ghcr.registry.typus.studio/rhincodon-studio/kaniko-executor:v1.23.0-debug'
     secrets:
       DOCKERHUB_USERNAME:
         required: false
