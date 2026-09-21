@@ -321,6 +321,12 @@ jobs:
             done
           fi
 
+          # registry_mirror 原本只注入 auth，沒傳給 kaniko（同 build-kaniko-tpl v1.5.7 修的 bug）
+          MIRROR_ARGS=""
+          if [ -n "${{ inputs.registry_mirror }}" ]; then
+            MIRROR_ARGS="--registry-mirror=${{ inputs.registry_mirror }}"
+          fi
+
           docker run --network=host \
             -v "$(pwd)":/workspace \
             -v "${DOCKER_CFG_DIR}":/kaniko/.docker:ro \
@@ -332,4 +338,5 @@ jobs:
             --build-arg BUILD_COMMIT_SHA=${GITHUB_SHA::8} \
             ${BUILD_ARGS} \
             ${CACHE_ARGS} \
+            ${MIRROR_ARGS} \
             --image-fs-extract-retry 5
