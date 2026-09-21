@@ -277,6 +277,17 @@ jobs:
             done
           fi
 
+          # registry_mirror input only injected Docker Hub pull-through proxy
+          # auth into .docker/config.json — it was never actually passed to
+          # kaniko, so FROM images (node:12-alpine, nginx:alpine, ...) always
+          # hit index.docker.io directly and never benefited from the mirror
+          # cache (confirmed 2026-09-21: dersteam run 35590456619 still shows
+          # "Retrieving image node:12-alpine3.15 from registry index.docker.io").
+          MIRROR_ARGS=""
+          if [ -n "${{ inputs.registry_mirror }}" ]; then
+            MIRROR_ARGS="--registry-mirror=${{ inputs.registry_mirror }}"
+          fi
+
           docker run --network=host \
             -v $(pwd)/${{ inputs.working_directory }}:/workspace \
             -v ${DOCKER_CFG_DIR}:/kaniko/.docker:ro \
@@ -287,6 +298,7 @@ jobs:
             --build-arg BUILD_COMMIT_SHA=${GITHUB_SHA::8} \
             ${BUILD_ARGS} \
             ${CACHE_ARGS} \
+            ${MIRROR_ARGS} \
             --image-fs-extract-retry 5
 
       # --- 6️⃣ 輸出版本號 ---
