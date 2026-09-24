@@ -58,6 +58,7 @@ jobs:
 | `registry` | 否 | `dockerhub` | 目標 registry：`dockerhub` 或 `ghcr` |
 | `cache` | 否 | `true` | 是否啟用 layer cache |
 | `runs_on` | 否 | `["self-hosted", "linux"]` | Runner 類型 |
+| `extra_registry` | 否 | `""` | 第二個推送目標的 registry 主機（例：叢集內 Nexus `hosted.registry.typus.studio`）；同一顆 image 以相同 `container_repository:version` 再推一份。帳密沿用 `PRIVATE_REGISTRY_*`，所以 `private_registry` 要設成同一台 |
 
 ## 必要 Secrets
 

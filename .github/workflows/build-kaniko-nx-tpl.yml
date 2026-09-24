@@ -112,6 +112,11 @@ on:
         required: false
         type: string
         default: ''
+      extra_registry:
+        description: 'Optional second push target hostname (e.g. an in-cluster registry). The image is pushed there too, under the same container_repository:version. Auth uses the same PRIVATE_REGISTRY credentials, so set private_registry to the same host.'
+        required: false
+        type: string
+        default: ''
       runs_on:
         description: 'Runner label'
         required: false
@@ -327,6 +332,12 @@ jobs:
             MIRROR_ARGS="--registry-mirror=${{ inputs.registry_mirror }}"
           fi
 
+          # extra_registry：同一顆 image 再推一份到叢集內 registry，節點經 mirror 拉時不必連外（ghcr 的 CDN 連線會被 reset）
+          EXTRA_DEST=""
+          if [ -n "${{ inputs.extra_registry }}" ]; then
+            EXTRA_DEST="--destination ${{ inputs.extra_registry }}/${{ inputs.container_repository }}:${VERSION}"
+          fi
+
           docker run --network=host \
             -v "$(pwd)":/workspace \
             -v "${DOCKER_CFG_DIR}":/kaniko/.docker:ro \
@@ -334,6 +345,7 @@ jobs:
             --context /workspace \
             --dockerfile /workspace/${{ inputs.dockerfile_path }} \
             --destination ${REGISTRY_URL}/${{ inputs.container_repository }}:${VERSION} \
+            ${EXTRA_DEST} \
             --snapshot-mode=${{ inputs.snapshot_mode }} \
             --build-arg BUILD_COMMIT_SHA=${GITHUB_SHA::8} \
             ${BUILD_ARGS} \
