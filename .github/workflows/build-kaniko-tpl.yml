@@ -51,8 +51,8 @@
 #   - submodules: checkout 時一併抓 git submodule（選填，預設：false；可填 true / recursive）
 #
 # 🔐 選填 Secret：
-#   - CHECKOUT_TOKEN: checkout 用的 token（沒給就用 github.token）。submodule 是另一個私有 repo 時，
-#     給一把只讀那個 repo 的 fine-grained token（Contents: Read-only）
+#   - CHECKOUT_TOKEN: 只用來抓 submodule 的 token（沒給就用 github.token）。submodule 是另一個私有 repo 時，
+#     給一把只讀那個 repo 的 fine-grained token（Contents: Read-only）；主 repo 一律用 github.token
 #
 # 🔐 必要 Secrets：
 #   📌 DockerHub（registry: dockerhub）：
@@ -174,8 +174,18 @@ jobs:
       # --- 1️⃣ 檢出程式碼（在 Runner 主機執行） ---
       - uses: actions/checkout@v4
         with:
-          submodules: ${{ inputs.submodules }}
-          token: ${{ secrets.CHECKOUT_TOKEN || github.token }}
+          # the submodule step below brings its own token; a persisted github.token header would override it
+          persist-credentials: ${{ inputs.submodules == 'false' }}
+
+      # CHECKOUT_TOKEN only reaches the submodule repos; the repo itself is checked out with github.token
+      - name: Check out submodules
+        if: inputs.submodules != 'false'
+        env:
+          TOKEN: ${{ secrets.CHECKOUT_TOKEN || github.token }}
+          RECURSIVE: ${{ inputs.submodules == 'recursive' && '--recursive' || '' }}
+        run: |
+          git -c "url.https://x-access-token:${TOKEN}@github.com/.insteadOf=https://github.com/" \
+            submodule update --init $RECURSIVE
 
       # --- 2️⃣ 設定 Docker Auth（DockerHub） ---
       - name: Configure Docker Auth (DockerHub)
