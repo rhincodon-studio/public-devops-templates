@@ -50,6 +50,10 @@
 #   - runs_on: Runner 類型（選填，預設：["self-hosted", "linux"]）
 #   - submodules: checkout 時一併抓 git submodule（選填，預設：false；可填 true / recursive）
 #
+# 🔐 選填 Secret：
+#   - CHECKOUT_TOKEN: checkout 用的 token（沒給就用 github.token）。submodule 是另一個私有 repo 時，
+#     給一把只讀那個 repo 的 fine-grained token（Contents: Read-only）
+#
 # 🔐 必要 Secrets：
 #   📌 DockerHub（registry: dockerhub）：
 #     - DOCKERHUB_USERNAME: Docker Hub 使用者名稱
@@ -152,6 +156,8 @@ on:
         required: false
       PRIVATE_REGISTRY_PASSWORD:
         required: false
+      CHECKOUT_TOKEN:
+        required: false
     outputs:
       version:
         description: 'Generated version tag (YYYY-MM-DD.commit-sha)'
@@ -169,6 +175,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: ${{ inputs.submodules }}
+          token: ${{ secrets.CHECKOUT_TOKEN || github.token }}
 
       # --- 2️⃣ 設定 Docker Auth（DockerHub） ---
       - name: Configure Docker Auth (DockerHub)
