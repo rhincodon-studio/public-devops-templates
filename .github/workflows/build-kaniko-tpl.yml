@@ -48,6 +48,7 @@
 #   - cache: 是否啟用 layer cache（選填，預設：true）
 #   - cache_repository: 自訂 cache repo 路徑（選填，預設自動產生）
 #   - runs_on: Runner 類型（選填，預設：["self-hosted", "linux"]）
+#   - submodules: checkout 時一併抓 git submodule（選填，預設：false；可填 true / recursive）
 #
 # 🔐 必要 Secrets：
 #   📌 DockerHub（registry: dockerhub）：
@@ -135,6 +136,11 @@ on:
         required: false
         type: string
         default: 'ghcr.registry.typus.studio/rhincodon-studio/kaniko-executor:v1.23.0-debug'
+      submodules:
+        description: 'Check out git submodules too: false / true / recursive (for images whose source lives in a submodule)'
+        required: false
+        type: string
+        default: 'false'
     secrets:
       DOCKERHUB_USERNAME:
         required: false
@@ -161,6 +167,8 @@ jobs:
     steps:
       # --- 1️⃣ 檢出程式碼（在 Runner 主機執行） ---
       - uses: actions/checkout@v4
+        with:
+          submodules: ${{ inputs.submodules }}
 
       # --- 2️⃣ 設定 Docker Auth（DockerHub） ---
       - name: Configure Docker Auth (DockerHub)
